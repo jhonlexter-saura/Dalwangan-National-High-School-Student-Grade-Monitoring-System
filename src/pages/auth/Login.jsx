@@ -106,24 +106,6 @@ function Login() {
           </button>
         </form>
 
-        {/* Development credentials */}
-        <div className="mt-6 rounded-md bg-gray-50 p-4 text-xs text-gray-500">
-          <p className="font-semibold">
-            Development Accounts
-          </p>
-
-          <p className="mt-2">
-            Student: student / student123
-          </p>
-
-          <p>
-            Teacher: teacher / teacher123
-          </p>
-
-          <p>
-            Admin: admin / admin123
-          </p>
-        </div>
       </div>
     </div>
   );
