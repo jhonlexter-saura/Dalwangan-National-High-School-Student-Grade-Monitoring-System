@@ -4,10 +4,18 @@ import { useSchoolData } from "../../context/SchoolDataContext";
 import {
   Save,
   BookOpen,
+  Check,
+  X,
 } from "lucide-react";
 
 function AdminScores() {
-  const { classes, activities, scores, saveScores, } = useSchoolData();
+  const {
+    classes,
+    activities,
+    scores,
+    saveScores,
+  } = useSchoolData();
+
   const [scoreInputs, setScoreInputs] = useState({});
 
   const [selectedClassId, setSelectedClassId] =
@@ -15,7 +23,6 @@ function AdminScores() {
 
   const [selectedActivityId, setSelectedActivityId] =
     useState("");
-
 
   const [saved, setSaved] = useState(false);
 
@@ -36,11 +43,8 @@ function AdminScores() {
 
   const handleClassChange = (e) => {
     setSelectedClassId(e.target.value);
-
     setSelectedActivityId("");
-
     setScoreInputs({});
-
     setSaved(false);
   };
 
@@ -69,48 +73,56 @@ function AdminScores() {
       }, {});
 
     setScoreInputs(existingScores);
-  }, [selectedClassId, selectedActivityId, scores]);
+  }, [
+    selectedClassId,
+    selectedActivityId,
+    scores,
+  ]);
 
   const handleScoreChange = (studentId, value) => {
-  if (value === "") {
+    if (value === "") {
+      setScoreInputs((prev) => ({
+        ...prev,
+        [studentId]: "",
+      }));
+
+      setSaved(false);
+      return;
+    }
+
+    const numericValue = Number(value);
+
+    if (numericValue < 0) {
+      return;
+    }
+
+    if (
+      selectedActivity &&
+      numericValue > selectedActivity.totalPoints
+    ) {
+      return;
+    }
+
     setScoreInputs((prev) => ({
       ...prev,
-      [studentId]: "",
+      [studentId]: value,
     }));
 
     setSaved(false);
-    return;
-  }
-
-  const numericValue = Number(value);
-
-  if (numericValue < 0) {
-    return;
-  }
-
-  if (
-    selectedActivity &&
-    numericValue > selectedActivity.totalPoints
-  ) {
-    return;
-  }
-
-  setScoreInputs((prev) => ({
-    ...prev,
-    [studentId]: value,
-  }));
-
-  setSaved(false);
-};
-  
+  };
 
   const handleSaveScores = () => {
-  if (!selectedClassId || !selectedActivityId || !selectedActivity) {
-    return;
-  }
+    if (
+      !selectedClassId ||
+      !selectedActivityId ||
+      !selectedActivity
+    ) {
+      return;
+    }
 
-  const hasInvalidScore = Object.values(scoreInputs).some(
-    (value) => {
+    const hasInvalidScore = Object.values(
+      scoreInputs
+    ).some((value) => {
       if (value === "") {
         return false;
       }
@@ -121,22 +133,27 @@ function AdminScores() {
         score < 0 ||
         score > selectedActivity.totalPoints
       );
+    });
+
+    if (hasInvalidScore) {
+      setSaved(false);
+      return;
     }
-  );
 
-  if (hasInvalidScore) {
-    setSaved(false);
-    return;
-  }
+    saveScores({
+      classId: Number(selectedClassId),
+      activityId: Number(selectedActivityId),
+      scoreData: scoreInputs,
+    });
 
-  saveScores({
-    classId: Number(selectedClassId),
-    activityId: Number(selectedActivityId),
-    scoreData: scoreInputs,
-  });
+    // Show success popup.
+    setSaved(true);
 
-  setSaved(true);
-};
+    // Automatically hide after 3 seconds.
+    setTimeout(() => {
+      setSaved(false);
+    }, 3000);
+  };
 
   const canEnterScores =
     selectedClass &&
@@ -144,6 +161,42 @@ function AdminScores() {
 
   return (
     <div>
+      {/* =========================
+          SUCCESS TOAST
+      ========================== */}
+
+      {saved && (
+        <div className="fixed right-4 top-4 z-50 w-[calc(100%-2rem)] max-w-sm">
+          <div className="flex items-start gap-3 rounded-lg border border-green-200 bg-white p-4 shadow-lg">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-green-100">
+              <Check
+                size={18}
+                className="text-green-600"
+              />
+            </div>
+
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-gray-800">
+                Success
+              </p>
+
+              <p className="mt-0.5 text-sm text-gray-500">
+                Scores saved successfully.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setSaved(false)}
+              className="ml-auto shrink-0 rounded-md p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+              aria-label="Close notification"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* =========================
           PAGE HEADER
       ========================== */}
@@ -164,6 +217,7 @@ function AdminScores() {
 
       <div className="mt-6 rounded-lg border bg-white p-5 shadow-sm">
         <div className="grid gap-5 md:grid-cols-2">
+
           {/* Class */}
 
           <div>
@@ -221,7 +275,8 @@ function AdminScores() {
                   key={activity.id}
                   value={activity.id}
                 >
-                  {activity.title} — {activity.totalPoints} pts
+                  {activity.title} —{" "}
+                  {activity.totalPoints} pts
                 </option>
               ))}
             </select>
@@ -235,6 +290,7 @@ function AdminScores() {
 
       {canEnterScores ? (
         <div className="mt-6 overflow-hidden rounded-lg border bg-white shadow-sm">
+
           {/* Table Header */}
 
           <div className="flex flex-col gap-3 border-b p-5 sm:flex-row sm:items-center sm:justify-between">
@@ -257,37 +313,39 @@ function AdminScores() {
             </div>
 
             <button
+              type="button"
               onClick={handleSaveScores}
-              className="flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
+              className="flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700"
             >
               <Save size={17} />
               Save Scores
             </button>
           </div>
 
-          {/* Saved message */}
+          {/* =========================
+              STUDENT TABLE
+          ========================== */}
 
-          {saved && (
-            <div className="border-b bg-green-50 px-5 py-3 text-sm text-green-700">
-              Scores saved successfully.
-            </div>
-          )}
+          <div className="w-full overflow-hidden">
+            <table className="w-full table-fixed text-left">
 
-          {/* Student Table */}
+              <colgroup>
+                <col className="w-[55%]" />
+                <col className="w-[25%]" />
+                <col className="w-[20%]" />
+              </colgroup>
 
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-600 text-left">
               <thead className="border-b bg-gray-50">
                 <tr>
-                  <th className="px-5 py-3 text-xs font-semibold uppercase text-gray-500">
+                  <th className="px-4 py-3 text-xs font-semibold uppercase text-gray-500 sm:px-5">
                     Student
                   </th>
 
-                  <th className="px-5 py-3 text-xs font-semibold uppercase text-gray-500">
+                  <th className="px-4 py-3 text-xs font-semibold uppercase text-gray-500 sm:px-5">
                     Score
                   </th>
 
-                  <th className="px-5 py-3 text-xs font-semibold uppercase text-gray-500">
+                  <th className="px-4 py-3 text-xs font-semibold uppercase text-gray-500 sm:px-5">
                     Percentage
                   </th>
                 </tr>
@@ -296,7 +354,8 @@ function AdminScores() {
               <tbody className="divide-y">
                 {selectedClass.students.map(
                   (student) => {
-                    const score = scoreInputs[student.id];
+                    const score =
+                      scoreInputs[student.id];
 
                     const percentage =
                       score !== undefined &&
@@ -313,21 +372,33 @@ function AdminScores() {
                         key={student.id}
                         className="hover:bg-gray-50"
                       >
-                        <td className="px-5 py-4">
-                          <p className="text-sm font-medium text-gray-800">
+
+                        {/* Student */}
+
+                        <td className="min-w-0 px-4 py-3 sm:px-5 sm:py-4">
+                          <p
+                            className="truncate text-sm font-medium text-gray-800"
+                            title={student.name}
+                          >
                             {student.name}
                           </p>
                         </td>
 
-                        <td className="px-5 py-4">
-                          <div className="flex items-center gap-2">
+                        {/* Score */}
+
+                        <td className="px-4 py-3 sm:px-5 sm:py-4">
+                          <div className="flex items-center gap-1.5 whitespace-nowrap">
                             <input
                               type="number"
                               min="0"
                               max={
                                 selectedActivity.totalPoints
                               }
-                              value={scoreInputs[student.id] ?? ""}
+                              value={
+                                scoreInputs[
+                                  student.id
+                                ] ?? ""
+                              }
                               onChange={(e) =>
                                 handleScoreChange(
                                   student.id,
@@ -335,22 +406,26 @@ function AdminScores() {
                                 )
                               }
                               placeholder="0"
-                              className="w-24 rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                              className="w-16 rounded-md border border-gray-300 px-2.5 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:w-20"
                             />
 
                             <span className="text-sm text-gray-500">
-                              /
-                              {" "}
-                              {selectedActivity.totalPoints}
+                              /{" "}
+                              {
+                                selectedActivity.totalPoints
+                              }
                             </span>
                           </div>
                         </td>
 
-                        <td className="px-5 py-4 text-sm text-gray-600">
+                        {/* Percentage */}
+
+                        <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-600 sm:px-5 sm:py-4">
                           {percentage === "—"
                             ? "—"
                             : `${percentage}%`}
                         </td>
+
                       </tr>
                     );
                   }
@@ -360,6 +435,7 @@ function AdminScores() {
           </div>
         </div>
       ) : (
+
         /* =========================
             EMPTY STATE
         ========================== */
