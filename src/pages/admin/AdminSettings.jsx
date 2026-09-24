@@ -29,7 +29,7 @@ function AdminSettings() {
 
           <button
             onClick={() => setEmailNotifications((prev) => !prev)}
-            className={`relative h-6 w-11 flex-shrink-0 rounded-full transition ${
+            className={`relative h-6 w-11 shrink-0 rounded-full transition ${
               emailNotifications ? "bg-blue-600" : "bg-gray-300"
             }`}
           >
