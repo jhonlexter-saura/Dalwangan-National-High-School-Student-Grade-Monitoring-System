@@ -84,7 +84,7 @@ function AdminDashboard() {
   return (
     <div className="space-y-6">
       <section className="relative overflow-hidden rounded-xl bg-blue-700 px-6 py-7 text-white shadow-sm sm:px-8">
-        <div className="absolute -right-8 -top-12 h-40 w-40 rounded-full border-[18px] border-yellow-400/80" />
+        <div className="absolute -right-8 -top-12 h-40 w-40 rounded-full border-18px border-yellow-400/80" />
         <div className="absolute bottom-0 right-24 h-2 w-20 bg-red-500" />
         <div className="relative max-w-2xl">
           <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-blue-100">

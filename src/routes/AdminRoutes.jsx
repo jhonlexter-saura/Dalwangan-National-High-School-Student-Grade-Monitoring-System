@@ -2,6 +2,8 @@ import AdminDashboard from "../pages/admin/AdminDashboard";
 import AdminClasses from "../pages/admin/AdminClasses";
 import AdminActivities from "../pages/admin/AdminActivities";
 import AdminScores from "../pages/admin/AdminScores";
+import AdminProfile from "../pages/admin/AdminProfile";
+import AdminSettings from "../pages/admin/AdminSettings";
 
 const adminRoutes = [
   {
@@ -19,6 +21,14 @@ const adminRoutes = [
   {
     path: "/admin/scores",
     element: <AdminScores />,
+  },
+  {
+    path: "/admin/profile",
+    element: <AdminProfile />,
+  },
+  {
+    path: "/admin/settings",
+    element: <AdminSettings />,
   },
 ];
 

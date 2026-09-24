@@ -3,7 +3,7 @@ import {
   Users,
   BookOpen,
   ClipboardList,
-  LogOut,
+  Settings,
   X,
 } from "lucide-react";
 
@@ -54,7 +54,8 @@ function Sidebar({ isOpen, onClose }) {
           </button>
         </div>
 
-        {/* Navigation */}
+        {/* Navigation - role-aware: each role only sees its own links,
+            Settings is the one item every role gets. */}
         <nav className="p-4">
   <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
     Main
@@ -67,44 +68,22 @@ function Sidebar({ isOpen, onClose }) {
       label="Dashboard"
     />
 
-    {user?.role === "admin" && (
+    {(user?.role === "admin" || user?.role === "teacher") && (
       <>
         <NavItem
-          to="/admin/classes"
+          to={`/${user.role}/classes`}
           icon={<Users size={20} />}
           label="Classes"
         />
 
         <NavItem
-          to="/admin/activities"
+          to={`/${user.role}/activities`}
           icon={<ClipboardList size={20} />}
           label="Activities"
         />
 
         <NavItem
-          to="/admin/scores"
-          icon={<BookOpen size={20} />}
-          label="Scores"
-        />
-      </>
-    )}
-
-    {user?.role === "teacher" && (
-      <>
-        <NavItem
-          to="/teacher/classes"
-          icon={<Users size={20} />}
-          label="Classes"
-        />
-
-        <NavItem
-          to="/teacher/activities"
-          icon={<ClipboardList size={20} />}
-          label="Activities"
-        />
-
-        <NavItem
-          to="/teacher/scores"
+          to={`/${user.role}/scores`}
           icon={<BookOpen size={20} />}
           label="Scores"
         />
@@ -126,9 +105,9 @@ function Sidebar({ isOpen, onClose }) {
 
   <div className="space-y-1">
     <NavItem
-      to="/logout"
-      icon={<LogOut size={20} />}
-      label="Logout"
+      to={`/${user?.role}/settings`}
+      icon={<Settings size={20} />}
+      label="Settings"
     />
   </div>
 </nav>
