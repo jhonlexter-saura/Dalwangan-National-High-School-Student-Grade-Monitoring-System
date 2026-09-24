@@ -1,1 +1,61 @@
 @import "tailwindcss";
+
+@theme {
+  --color-blue-50: #eaf2ff;
+  --color-blue-100: #dbe8ff;
+  --color-blue-200: #b9d0ff;
+  --color-blue-400: #0b5ed7;
+  --color-blue-500: #0b5ed7;
+  --color-blue-600: #0038a8;
+  --color-blue-700: #084298;
+
+  --color-gray-50: #f8fafc;
+  --color-gray-100: #f5f7fa;
+  --color-gray-200: #d9e1ec;
+  --color-gray-300: #d9e1ec;
+  --color-gray-400: #64748b;
+  --color-gray-500: #64748b;
+  --color-gray-600: #475569;
+  --color-gray-700: #1e293b;
+  --color-gray-800: #0f2a4a;
+
+  --color-red-200: #f5c2c7;
+  --color-red-500: #dc3545;
+  --color-red-600: #dc3545;
+  --color-green-50: #e8f5ee;
+  --color-green-700: #198754;
+  --color-yellow-400: #ffc107;
+  --color-yellow-500: #ffc107;
+}
+
+:root {
+  --deped-navy: #0f2a4a;
+  --deped-blue: #0038a8;
+  --deped-primary: #0b5ed7;
+  --deped-hover: #084298;
+  --deped-light-blue: #eaf2ff;
+  --deped-gold: #ffc107;
+  --deped-background: #f5f7fa;
+  --deped-border: #d9e1ec;
+  --deped-muted: #64748b;
+}
+
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--deped-border);
+  }
+
+  body {
+    background-color: var(--deped-background);
+    color: var(--deped-navy);
+  }
+
+  button,
+  a,
+  input,
+  select {
+    outline-color: var(--deped-primary);
+  }
+}
