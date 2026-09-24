@@ -3,7 +3,6 @@ import {
   Users,
   BookOpen,
   ClipboardList,
-  Settings,
   LogOut,
   X,
 } from "lucide-react";
@@ -36,13 +35,14 @@ function Sidebar({ isOpen, onClose }) {
         {/* Logo */}
         <div className="flex h-16 items-center justify-between border-b px-5">
           <div>
-            <h1 className="text-lg font-bold">
+            <h1 className="text-lg font-bold text-blue-700">
               DNHS-SGMS
             </h1>
 
             <p className="text-xs text-gray-500">
               Grade Monitoring System
             </p>
+            <div className="mt-2 h-1 w-10 rounded-full bg-yellow-400" />
           </div>
 
           {/* Close button - mobile */}
@@ -56,7 +56,7 @@ function Sidebar({ isOpen, onClose }) {
 
         {/* Navigation */}
         <nav className="p-4">
-  <p className="mb-2 px-3 text-xs font-semibold uppercase text-gray-400">
+  <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
     Main
   </p>
 
@@ -120,7 +120,7 @@ function Sidebar({ isOpen, onClose }) {
     )}
   </div>
 
-  <p className="mb-2 mt-8 px-3 text-xs font-semibold uppercase text-gray-400">
+  <p className="mb-2 mt-8 px-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
     System
   </p>
 
@@ -151,8 +151,8 @@ function NavItem({ to, icon, label }) {
         text-sm transition
         ${
           isActive
-            ? "bg-blue-50 font-medium text-blue-600"
-            : "text-gray-700 hover:bg-gray-100"
+            ? "border-l-4 border-yellow-400 bg-blue-50 pl-2 font-medium text-blue-600"
+            : "border-l-4 border-transparent text-gray-700 hover:bg-blue-50 hover:text-blue-700"
         }
         `
       }

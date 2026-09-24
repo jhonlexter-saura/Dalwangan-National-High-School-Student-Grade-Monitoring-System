@@ -2,12 +2,12 @@
 
 @theme {
   --color-blue-50: #eaf2ff;
-  --color-blue-100: #dbe8ff;
+  --color-blue-100: #dce8ff;
   --color-blue-200: #b9d0ff;
-  --color-blue-400: #0b5ed7;
-  --color-blue-500: #0b5ed7;
+  --color-blue-400: #0038a8;
+  --color-blue-500: #0038a8;
   --color-blue-600: #0038a8;
-  --color-blue-700: #084298;
+  --color-blue-700: #002b7f;
 
   --color-gray-50: #f8fafc;
   --color-gray-100: #f5f7fa;
@@ -16,25 +16,28 @@
   --color-gray-400: #64748b;
   --color-gray-500: #64748b;
   --color-gray-600: #475569;
-  --color-gray-700: #1e293b;
-  --color-gray-800: #0f2a4a;
+  --color-gray-700: #172b4d;
+  --color-gray-800: #002b7f;
 
+  --color-red-50: #fff1f2;
   --color-red-200: #f5c2c7;
-  --color-red-500: #dc3545;
-  --color-red-600: #dc3545;
+  --color-red-500: #ce1126;
+  --color-red-600: #ce1126;
   --color-green-50: #e8f5ee;
   --color-green-700: #198754;
-  --color-yellow-400: #ffc107;
-  --color-yellow-500: #ffc107;
+  --color-yellow-50: #fffbea;
+  --color-yellow-100: #fff4cc;
+  --color-yellow-400: #fcd116;
+  --color-yellow-500: #fcd116;
 }
 
 :root {
-  --deped-navy: #0f2a4a;
+  --deped-navy: #172b4d;
   --deped-blue: #0038a8;
-  --deped-primary: #0b5ed7;
-  --deped-hover: #084298;
+  --deped-dark-blue: #002b7f;
+  --deped-red: #ce1126;
+  --deped-gold: #fcd116;
   --deped-light-blue: #eaf2ff;
-  --deped-gold: #ffc107;
   --deped-background: #f5f7fa;
   --deped-border: #d9e1ec;
   --deped-muted: #64748b;

@@ -23,13 +23,13 @@ function Header({ onMenuClick }) {
       <div className="flex items-center gap-3">
         <button
           onClick={onMenuClick}
-          className="rounded-md p-2 hover:bg-gray-100 lg:hidden"
+          className="rounded-md p-2 text-blue-700 hover:bg-blue-50 lg:hidden"
         >
           <Menu size={22} />
         </button>
 
         <div className="hidden sm:block">
-          <h2 className="text-lg font-semibold text-gray-800">
+          <h2 className="text-lg font-semibold text-blue-700">
             {roleName[user?.role] || "User"}
           </h2>
 
@@ -44,13 +44,13 @@ function Header({ onMenuClick }) {
         <div className="relative">
           <Search
             size={18}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-blue-700"
           />
 
           <input
             type="text"
             placeholder="Search..."
-            className="w-full rounded-md border border-gray-200 bg-gray-50 py-2 pl-10 pr-4 text-sm text-gray-700 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-1 focus:ring-blue-400"
+            className="w-full rounded-md border border-gray-200 bg-white py-2 pl-10 pr-4 text-sm text-gray-700 outline-none transition focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
           />
         </div>
       </div>
@@ -58,17 +58,17 @@ function Header({ onMenuClick }) {
       {/* Right side */}
       <div className="flex items-center gap-2">
         {/* Search icon - shown only when the bar is collapsed on small screens */}
-        <button className="rounded-md p-2 hover:bg-gray-100 md:hidden">
+        <button className="rounded-md p-2 text-blue-700 hover:bg-blue-50 md:hidden">
           <Search size={20} />
         </button>
 
-        <button className="relative rounded-md p-2 hover:bg-gray-100">
+        <button className="relative rounded-md p-2 text-blue-700 hover:bg-blue-50">
           <Bell size={20} />
 
-          <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500" />
+          <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500 ring-2 ring-white" />
         </button>
 
-        <button className="flex items-center gap-2 rounded-md p-2 hover:bg-gray-100">
+        <button className="flex items-center gap-2 rounded-md p-2 text-blue-700 hover:bg-blue-50">
           <UserCircle size={24} />
 
           <span className="hidden text-sm font-medium sm:block">

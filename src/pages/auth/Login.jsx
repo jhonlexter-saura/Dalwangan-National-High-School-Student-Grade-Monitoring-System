@@ -34,11 +34,11 @@ function Login() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-100 px-4">
-      <div className="w-full max-w-md rounded-xl bg-white p-8 shadow-sm">
+      <div className="w-full max-w-md rounded-xl border-t-4 border-yellow-400 bg-white p-8 shadow-sm">
 
         {/* Header */}
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-800">
+          <h1 className="text-2xl font-bold text-blue-700">
             DNHS-SGMS
           </h1>
 
