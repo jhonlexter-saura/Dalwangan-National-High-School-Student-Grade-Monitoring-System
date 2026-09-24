@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useSchoolData } from "../../context/SchoolDataContext";
 
 import {
@@ -7,10 +8,12 @@ import {
   X,
   UserPlus,
   Mail,
+  ChevronRight,
 } from "lucide-react";
 
 function AdminClasses() {
   const { classes, createClass, inviteStudent } = useSchoolData();
+  const navigate = useNavigate();
 
   const [showClassModal, setShowClassModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -135,7 +138,16 @@ function AdminClasses() {
         {classes.map((classItem) => (
           <div
             key={classItem.id}
-            className="rounded-lg border bg-white p-5 shadow-sm"
+            role="button"
+            tabIndex={0}
+            onClick={() => navigate(`/admin/activities?classId=${classItem.id}`)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                navigate(`/admin/activities?classId=${classItem.id}`);
+              }
+            }}
+            className="group cursor-pointer rounded-lg border bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
           >
             {/* Class information */}
 
@@ -150,8 +162,14 @@ function AdminClasses() {
                 </p>
               </div>
 
-              <div className="rounded-md bg-blue-50 p-2 text-blue-600">
-                <Users size={20} />
+              <div className="flex items-center gap-2">
+                <div className="rounded-md bg-blue-50 p-2 text-blue-600">
+                  <Users size={20} />
+                </div>
+                <ChevronRight
+                  size={18}
+                  className="text-gray-300 transition group-hover:translate-x-0.5 group-hover:text-blue-500"
+                />
               </div>
             </div>
 
@@ -180,7 +198,10 @@ function AdminClasses() {
             {/* Invite button */}
 
             <button
-              onClick={() => openInviteModal(classItem.id)}
+              onClick={(e) => {
+                e.stopPropagation();
+                openInviteModal(classItem.id);
+              }}
               className="mt-5 flex w-full items-center justify-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-600 transition hover:bg-blue-100"
             >
               <UserPlus size={17} />
