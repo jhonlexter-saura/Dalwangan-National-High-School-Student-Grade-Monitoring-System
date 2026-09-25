@@ -5,35 +5,65 @@ import { useSchoolData } from "../../context/SchoolDataContext";
 import {
   Plus,
   Users,
-  X,
   UserPlus,
-  Mail,
+  X,
   ChevronRight,
 } from "lucide-react";
 
 function AdminClasses() {
-  const { classes, createClass, inviteStudent } = useSchoolData();
   const navigate = useNavigate();
+
+  const {
+    classes,
+    createClass,
+    inviteStudent,
+  } = useSchoolData();
 
   const [showClassModal, setShowClassModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
 
   const [selectedClassId, setSelectedClassId] = useState(null);
 
+  const [isCreatingClass, setIsCreatingClass] = useState(false);
+  const [isInvitingStudent, setIsInvitingStudent] = useState(false);
+
   const [classForm, setClassForm] = useState({
     name: "",
+    section: "",
+    gradeLevel: "",
     adviser: "",
     schoolYear: "2026-2027",
   });
 
   const [studentForm, setStudentForm] = useState({
+    studentId: "",
     name: "",
     email: "",
   });
 
-  // -----------------------------
-  // Class Form
-  // -----------------------------
+  const openCreateClassModal = () => {
+    setClassForm({
+      name: "",
+      section: "",
+      gradeLevel: "",
+      adviser: "",
+      schoolYear: "2026-2027",
+    });
+
+    setShowClassModal(true);
+  };
+
+  const openInviteModal = (classId) => {
+    setSelectedClassId(classId);
+
+    setStudentForm({
+      studentId: "",
+      name: "",
+      email: "",
+    });
+
+    setShowInviteModal(true);
+  };
 
   const handleClassChange = (e) => {
     const { name, value } = e.target;
@@ -44,32 +74,6 @@ function AdminClasses() {
     }));
   };
 
-  const handleCreateClass = (e) => {
-    e.preventDefault();
-
-    if (!classForm.name || !classForm.adviser) {
-      return;
-    }
-
-    createClass({
-        name: classForm.name,
-        adviser: classForm.adviser,
-        schoolYear: classForm.schoolYear,
-    });
-
-    setClassForm({
-        name: "",
-        adviser: "",
-        schoolYear: "2026-2027",
-    });
-
-    setShowClassModal(false);
-  };
-
-  // -----------------------------
-  // Student Form
-  // -----------------------------
-
   const handleStudentChange = (e) => {
     const { name, value } = e.target;
 
@@ -79,37 +83,112 @@ function AdminClasses() {
     }));
   };
 
-  const handleInviteStudent = (e) => {
+  const handleCreateClass = async (e) => {
     e.preventDefault();
 
-    if (!studentForm.name || !studentForm.email) {
+    if (
+      !classForm.name ||
+      !classForm.section ||
+      !classForm.gradeLevel ||
+      !classForm.adviser ||
+      !classForm.schoolYear
+    ) {
       return;
     }
 
-    inviteStudent(selectedClassId, {
-        name: studentForm.name,
-        email: studentForm.email,
-    });
+    if (isCreatingClass) return;
 
-    setStudentForm({
-      name: "",
-      email: "",
-    });
+    try {
+      setIsCreatingClass(true);
 
-    setShowInviteModal(false);
+      await createClass({
+        name: classForm.name,
+        section: classForm.section,
+        gradeLevel: Number(classForm.gradeLevel),
+        adviser: classForm.adviser,
+        schoolYear: classForm.schoolYear,
+      });
+
+      setShowClassModal(false);
+
+      setClassForm({
+        name: "",
+        section: "",
+        gradeLevel: "",
+        adviser: "",
+        schoolYear: "2026-2027",
+      });
+    } catch (error) {
+      alert(error.message);
+    } finally {
+      setIsCreatingClass(false);
+    }
   };
 
-  const openInviteModal = (classId) => {
-    setSelectedClassId(classId);
-    setShowInviteModal(true);
+  const handleInviteStudent = async (e) => {
+    e.preventDefault();
+
+    if (
+      !selectedClassId ||
+      !studentForm.studentId ||
+      !studentForm.name ||
+      !studentForm.email
+    ) {
+      return;
+    }
+
+    if (isInvitingStudent) return;
+
+    const selectedClass = classes.find(
+      (classItem) =>
+        String(classItem.id) === String(selectedClassId)
+    );
+
+    if (!selectedClass) {
+      alert("Selected class was not found.");
+      return;
+    }
+
+    const duplicateEmail = selectedClass.students?.some(
+      (student) =>
+        student.email?.toLowerCase() ===
+        studentForm.email.toLowerCase()
+    );
+
+    if (duplicateEmail) {
+      alert("This student is already in the selected class.");
+      return;
+    }
+
+    try {
+      setIsInvitingStudent(true);
+
+      await inviteStudent(selectedClassId, {
+        studentId: studentForm.studentId,
+        name: studentForm.name,
+        email: studentForm.email,
+        gradeLevel: selectedClass.gradeLevel,
+        section: selectedClass.section,
+        schoolYear: selectedClass.schoolYear,
+      });
+
+      setShowInviteModal(false);
+
+      setStudentForm({
+        studentId: "",
+        name: "",
+        email: "",
+      });
+    } catch (error) {
+      alert(error.message);
+    } finally {
+      setIsInvitingStudent(false);
+    }
   };
 
   return (
     <div>
-      {/* =========================
-          PAGE HEADER
-      ========================== */}
-
+      {/* PAGE HEADER */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">
@@ -117,12 +196,13 @@ function AdminClasses() {
           </h1>
 
           <p className="mt-1 text-sm text-gray-500">
-            Create classes and invite students.
+            Manage classes and their students.
           </p>
         </div>
 
         <button
-          onClick={() => setShowClassModal(true)}
+          type="button"
+          onClick={openCreateClassModal}
           className="flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700"
         >
           <Plus size={18} />
@@ -130,126 +210,142 @@ function AdminClasses() {
         </button>
       </div>
 
-      {/* =========================
-          CLASS LIST
-      ========================== */}
+      {/* CLASS CARDS */}
+      <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+        {classes.length > 0 ? (
+          classes.map((classItem) => (
+            <div
+              key={classItem.id}
+              className="group rounded-lg border bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md"
+            >
+              {/* CLICKABLE CLASS AREA */}
+              <button
+                type="button"
+                onClick={() =>
+                  navigate(
+                    `/admin/activities?classId=${classItem.id}`
+                  )
+                }
+                className="block w-full cursor-pointer text-left focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="min-w-0">
+                    <h2 className="truncate font-semibold text-gray-800 group-hover:text-blue-600">
+                      {classItem.name}
+                    </h2>
 
-      <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {classes.map((classItem) => (
-          <div
-            key={classItem.id}
-            role="button"
-            tabIndex={0}
-            onClick={() => navigate(`/admin/activities?classId=${classItem.id}`)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                navigate(`/admin/activities?classId=${classItem.id}`);
-              }
-            }}
-            className="group cursor-pointer rounded-lg border bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-          >
-            {/* Class information */}
+                    <p className="mt-1 text-sm text-gray-500">
+                      {classItem.schoolYear}
+                    </p>
+                  </div>
 
-            <div className="flex items-start justify-between">
-              <div>
-                <h2 className="font-semibold text-gray-800">
-                  {classItem.name}
-                </h2>
+                  <div className="ml-3 flex shrink-0 items-center gap-2">
+                    <div className="rounded-md bg-blue-50 p-2 text-blue-600">
+                      <Users size={20} />
+                    </div>
 
-                <p className="mt-1 text-sm text-gray-500">
-                  {classItem.schoolYear}
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <div className="rounded-md bg-blue-50 p-2 text-blue-600">
-                  <Users size={20} />
+                    <ChevronRight
+                      size={18}
+                      className="text-gray-300 transition group-hover:translate-x-0.5 group-hover:text-blue-500"
+                    />
+                  </div>
                 </div>
-                <ChevronRight
-                  size={18}
-                  className="text-gray-300 transition group-hover:translate-x-0.5 group-hover:text-blue-500"
-                />
-              </div>
+
+                <div className="mt-5 border-t pt-4">
+                  <p className="text-sm text-gray-500">
+                    Adviser
+                  </p>
+
+                  <p className="mt-1 text-sm font-medium text-gray-800">
+                    {classItem.adviser}
+                  </p>
+                </div>
+
+                <div className="mt-4 flex items-center gap-2 text-sm text-gray-500">
+                  <Users size={16} />
+
+                  <span>
+                    {classItem.students?.length || 0}{" "}
+                    {(classItem.students?.length || 0) === 1
+                      ? "student"
+                      : "students"}
+                  </span>
+                </div>
+              </button>
+
+              {/* INVITE STUDENT */}
+              <button
+                type="button"
+                onClick={() => openInviteModal(classItem.id)}
+                className="mt-5 flex w-full items-center justify-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-600 transition hover:bg-blue-100"
+              >
+                <UserPlus size={17} />
+                Invite Student
+              </button>
+
+              {/* STUDENTS */}
+              {classItem.students?.length > 0 && (
+                <div className="mt-5 border-t pt-4">
+                  <p className="mb-3 text-sm font-semibold text-gray-700">
+                    Students
+                  </p>
+
+                  <div className="space-y-3">
+                    {classItem.students.map((student) => (
+                      <div
+                        key={student.id}
+                        className="flex items-center gap-3"
+                      >
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-600">
+                          {student.name
+                            ?.charAt(0)
+                            .toUpperCase()}
+                        </div>
+
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-gray-800">
+                            {student.name}
+                          </p>
+
+                          <p className="truncate text-xs text-gray-500">
+                            {student.email}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
+          ))
+        ) : (
+          <div className="col-span-full rounded-lg border bg-white p-10 text-center shadow-sm">
+            <Users
+              size={40}
+              className="mx-auto text-gray-400"
+            />
 
-            {/* Adviser */}
+            <h2 className="mt-4 font-semibold text-gray-700">
+              No classes available
+            </h2>
 
-            <div className="mt-5 border-t pt-4">
-              <p className="text-sm text-gray-500">
-                Adviser
-              </p>
-
-              <p className="mt-1 text-sm font-medium text-gray-800">
-                {classItem.adviser}
-              </p>
-            </div>
-
-            {/* Student count */}
-
-            <div className="mt-4 flex items-center gap-2 text-sm text-gray-500">
-              <Users size={16} />
-
-              <span>
-                {classItem.students.length} students
-              </span>
-            </div>
-
-            {/* Invite button */}
+            <p className="mt-1 text-sm text-gray-500">
+              Create a class to get started.
+            </p>
 
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                openInviteModal(classItem.id);
-              }}
-              className="mt-5 flex w-full items-center justify-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-600 transition hover:bg-blue-100"
+              type="button"
+              onClick={openCreateClassModal}
+              className="mt-4 inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
             >
-              <UserPlus size={17} />
-              Invite Student
+              <Plus size={17} />
+              Create Class
             </button>
-
-            {/* Students */}
-
-            {classItem.students.length > 0 && (
-              <div className="mt-5 border-t pt-4">
-                <p className="mb-3 text-sm font-semibold text-gray-700">
-                  Students
-                </p>
-
-                <div className="space-y-3">
-                  {classItem.students.map((student) => (
-                    <div
-                      key={student.id}
-                      className="flex items-center gap-3"
-                    >
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-600">
-                        {student.name
-                          .charAt(0)
-                          .toUpperCase()}
-                      </div>
-
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-gray-800">
-                          {student.name}
-                        </p>
-
-                        <p className="truncate text-xs text-gray-500">
-                          {student.email}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
-        ))}
+        )}
       </div>
 
-      {/* =========================
-          CREATE CLASS MODAL
-      ========================== */}
-
+      {/* CREATE CLASS MODAL */}
       {showClassModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="w-full max-w-md rounded-xl bg-white shadow-lg">
@@ -265,6 +361,7 @@ function AdminClasses() {
               </div>
 
               <button
+                type="button"
                 onClick={() => setShowClassModal(false)}
                 className="rounded-md p-2 text-gray-500 hover:bg-gray-100"
               >
@@ -274,69 +371,88 @@ function AdminClasses() {
 
             <form
               onSubmit={handleCreateClass}
-              className="space-y-5 p-6"
+              className="space-y-4 p-6"
             >
               <div>
-                <label
-                  htmlFor="class-name"
-                  className="block text-sm font-medium text-gray-700"
-                >
+                <label className="block text-sm font-medium text-gray-700">
                   Class Name
                 </label>
 
                 <input
-                  id="class-name"
                   name="name"
-                  type="text"
                   value={classForm.name}
                   onChange={handleClassChange}
-                  placeholder="e.g. Grade 10 - ICT B"
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  placeholder="e.g. Grade 10 - ICT A"
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                 />
               </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Grade Level
+                  </label>
+
+                  <select
+                    name="gradeLevel"
+                    value={classForm.gradeLevel}
+                    onChange={handleClassChange}
+                    className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  >
+                    <option value="">
+                      Select
+                    </option>
+
+                    <option value="7">Grade 7</option>
+                    <option value="8">Grade 8</option>
+                    <option value="9">Grade 9</option>
+                    <option value="10">Grade 10</option>
+                    <option value="11">Grade 11</option>
+                    <option value="12">Grade 12</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Section
+                  </label>
+
+                  <input
+                    name="section"
+                    value={classForm.section}
+                    onChange={handleClassChange}
+                    placeholder="ICT A"
+                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
               <div>
-                <label
-                  htmlFor="class-adviser"
-                  className="block text-sm font-medium text-gray-700"
-                >
+                <label className="block text-sm font-medium text-gray-700">
                   Adviser
                 </label>
 
                 <input
-                  id="class-adviser"
                   name="adviser"
-                  type="text"
                   value={classForm.adviser}
                   onChange={handleClassChange}
-                  placeholder="e.g. Pedro Cruz"
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  placeholder="Teacher name"
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
                 />
               </div>
 
               <div>
-                <label
-                  htmlFor="class-school-year"
-                  className="block text-sm font-medium text-gray-700"
-                >
+                <label className="block text-sm font-medium text-gray-700">
                   School Year
                 </label>
 
-                <select
-                  id="class-school-year"
+                <input
                   name="schoolYear"
                   value={classForm.schoolYear}
                   onChange={handleClassChange}
-                  className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                >
-                  <option value="2026-2027">
-                    2026-2027
-                  </option>
-
-                  <option value="2025-2026">
-                    2025-2026
-                  </option>
-                </select>
+                  placeholder="2026-2027"
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                />
               </div>
 
               <div className="flex justify-end gap-3 border-t pt-5">
@@ -350,9 +466,12 @@ function AdminClasses() {
 
                 <button
                   type="submit"
-                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                  disabled={isCreatingClass}
+                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Create Class
+                  {isCreatingClass
+                    ? "Creating..."
+                    : "Create Class"}
                 </button>
               </div>
             </form>
@@ -360,10 +479,7 @@ function AdminClasses() {
         </div>
       )}
 
-      {/* =========================
-          INVITE STUDENT MODAL
-      ========================== */}
-
+      {/* INVITE STUDENT MODAL */}
       {showInviteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="w-full max-w-md rounded-xl bg-white shadow-lg">
@@ -379,6 +495,7 @@ function AdminClasses() {
               </div>
 
               <button
+                type="button"
                 onClick={() => setShowInviteModal(false)}
                 className="rounded-md p-2 text-gray-500 hover:bg-gray-100"
               >
@@ -388,55 +505,49 @@ function AdminClasses() {
 
             <form
               onSubmit={handleInviteStudent}
-              className="space-y-5 p-6"
+              className="space-y-4 p-6"
             >
               <div>
-                <label
-                  htmlFor="student-name"
-                  className="block text-sm font-medium text-gray-700"
-                >
-                  Student Name
+                <label className="block text-sm font-medium text-gray-700">
+                  Student ID
                 </label>
 
                 <input
-                  id="student-name"
-                  name="name"
-                  type="text"
-                  value={studentForm.name}
+                  name="studentId"
+                  value={studentForm.studentId}
                   onChange={handleStudentChange}
-                  placeholder="e.g. Juan Dela Cruz"
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  placeholder="e.g. 2026-0001"
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
                 />
               </div>
 
               <div>
-                <label
-                  htmlFor="student-email"
-                  className="block text-sm font-medium text-gray-700"
-                >
-                  Student Email
+                <label className="block text-sm font-medium text-gray-700">
+                  Student Name
                 </label>
 
-                <div className="relative">
-                  <Mail
-                    size={18}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-                  />
-
-                  <input
-                    id="student-email"
-                    name="email"
-                    type="email"
-                    value={studentForm.email}
-                    onChange={handleStudentChange}
-                    placeholder="student@example.com"
-                    className="mt-1 w-full rounded-md border border-gray-300 py-2 pl-10 pr-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  />
-                </div>
+                <input
+                  name="name"
+                  value={studentForm.name}
+                  onChange={handleStudentChange}
+                  placeholder="Juan Dela Cruz"
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                />
               </div>
 
-              <div className="rounded-md bg-blue-50 p-3 text-sm text-blue-700">
-                The student will be added to the selected class.
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Email
+                </label>
+
+                <input
+                  name="email"
+                  type="email"
+                  value={studentForm.email}
+                  onChange={handleStudentChange}
+                  placeholder="student@example.com"
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                />
               </div>
 
               <div className="flex justify-end gap-3 border-t pt-5">
@@ -450,10 +561,12 @@ function AdminClasses() {
 
                 <button
                   type="submit"
-                  className="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                  disabled={isInvitingStudent}
+                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <UserPlus size={17} />
-                  Invite Student
+                  {isInvitingStudent
+                    ? "Inviting..."
+                    : "Invite Student"}
                 </button>
               </div>
             </form>

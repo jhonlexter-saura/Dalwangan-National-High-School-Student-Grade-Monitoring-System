@@ -1,48 +1,45 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { useSchoolData } from "../../context/SchoolDataContext";
-
-import {
-  Plus,
-  ClipboardList,
-  Search,
-  X,
-} from "lucide-react";
+import { Plus, ClipboardList, Search, X, ChevronRight } from "lucide-react";
 
 function AdminActivities() {
   const { classes, activities, createActivity } = useSchoolData();
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   const [showModal, setShowModal] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [activitySearch, setActivitySearch] = useState("");
 
-  const classIdFromUrl = searchParams.get("classId");
-  const selectedClassId = classIdFromUrl
-    ? Number(classIdFromUrl)
-    : classes[0]?.id ?? "";
+  const urlClassId = searchParams.get("classId");
+  const selectedClassId =
+    urlClassId || classes[0]?.id || "";
 
   const selectedClass = classes.find(
-    (classItem) => classItem.id === Number(selectedClassId)
+    (classItem) => String(classItem.id) === String(selectedClassId)
   );
 
   useEffect(() => {
     if (!classes.length) return;
 
-    const urlClassId = Number(searchParams.get("classId"));
-    const hasValidClass = classes.some((classItem) => classItem.id === urlClassId);
+    const valid = classes.some(
+      (classItem) => String(classItem.id) === String(urlClassId)
+    );
 
-    if (!hasValidClass) {
-      setSearchParams({ classId: String(classes[0].id) }, { replace: true });
+    if (!urlClassId || !valid) {
+      setSearchParams(
+        { classId: String(classes[0].id) },
+        { replace: true }
+      );
     }
-  }, [classes, searchParams, setSearchParams]);
+  }, [classes, urlClassId, setSearchParams]);
 
   const handleClassSelect = (e) => {
-    const classId = e.target.value;
-
-    if (!classId) return;
-
-    setSearchParams({ classId }, { replace: false });
+    setSearchParams(
+      { classId: e.target.value },
+      { replace: false }
+    );
     setActivitySearch("");
   };
 
@@ -50,10 +47,12 @@ function AdminActivities() {
     const query = activitySearch.trim().toLowerCase();
 
     return activities
-      .filter((activity) => activity.classId === Number(selectedClassId))
+      .filter(
+        (activity) =>
+          String(activity.classId) === String(selectedClassId)
+      )
       .filter((activity) => {
         if (!query) return true;
-
         return (
           activity.title.toLowerCase().includes(query) ||
           activity.type.toLowerCase().includes(query)
@@ -62,16 +61,9 @@ function AdminActivities() {
   }, [activities, activitySearch, selectedClassId]);
 
   const selectedClassActivityCount = activities.filter(
-    (activity) => activity.classId === Number(selectedClassId)
+    (activity) =>
+      String(activity.classId) === String(selectedClassId)
   ).length;
-
-  const openCreateModal = () => {
-    setFormData((prev) => ({
-      ...prev,
-      classId: selectedClassId ? String(selectedClassId) : "",
-    }));
-    setShowModal(true);
-  };
 
   const [formData, setFormData] = useState({
     title: "",
@@ -81,79 +73,73 @@ function AdminActivities() {
     date: "",
   });
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-
+  const openCreateModal = () => {
     setFormData((prev) => ({
       ...prev,
-      [name]: value,
+      classId: String(selectedClassId || ""),
     }));
+    setShowModal(true);
   };
 
-  const handleCreateActivity = (e) => {
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleCreateActivity = async (e) => {
     e.preventDefault();
 
     if (
       !formData.title ||
       !formData.classId ||
       !formData.totalPoints ||
-      !formData.date
+      !formData.date ||
+      isCreating
     ) {
       return;
     }
 
     const totalPoints = Number(formData.totalPoints);
+    if (totalPoints <= 0) return;
 
-    if (totalPoints <= 0) {
-      return;
+    try {
+      setIsCreating(true);
+
+      await createActivity({
+        title: formData.title,
+        classId: formData.classId,
+        type:
+          formData.type === "Quiz"
+            ? "quiz"
+            : formData.type === "Assignment"
+              ? "assignment"
+              : formData.type === "Exam"
+                ? "exam"
+                : "project",
+        totalPoints,
+        date: formData.date,
+      });
+
+      setFormData({
+        title: "",
+        classId: String(selectedClassId || ""),
+        type: "Quiz",
+        totalPoints: "",
+        date: "",
+      });
+      setShowModal(false);
+    } catch (error) {
+      alert(error.message);
+    } finally {
+      setIsCreating(false);
     }
-
-    if (isCreating) {
-      return;
-    }
-
-    setIsCreating(true);
-
-    createActivity({
-      title: formData.title,
-      classId: Number(formData.classId),
-      type: formData.type,
-      totalPoints,
-      date: formData.date,
-    });
-
-    setFormData({
-      title: "",
-      classId: "",
-      type: "Quiz",
-      totalPoints: "",
-      date: "",
-    });
-
-    setShowModal(false);
-    setIsCreating(false);
-  };
-
-  const getClassName = (classId) => {
-    const selectedClass = classes.find(
-      (classItem) => classItem.id === classId
-    );
-
-    return selectedClass?.name || "Unknown Class";
   };
 
   return (
     <div>
-      {/* =========================
-          PAGE HEADER
-      ========================== */}
-
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">
-            Activities
-          </h1>
-
+          <h1 className="text-2xl font-bold text-gray-800">Activities</h1>
           <p className="mt-1 text-sm text-gray-500">
             Create and manage class activities.
           </p>
@@ -168,22 +154,13 @@ function AdminActivities() {
         </button>
       </div>
 
-      {/* =========================
-          CLASS FILTER + ACTIVITY SEARCH
-      ========================== */}
-
       <div className="mt-6 rounded-lg border bg-white p-4 shadow-sm">
         <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
           <div>
-            <label
-              htmlFor="activity-class-filter"
-              className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500"
-            >
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
               Class
             </label>
-
             <select
-              id="activity-class-filter"
               value={selectedClassId}
               onChange={handleClassSelect}
               className="h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
@@ -197,20 +174,15 @@ function AdminActivities() {
           </div>
 
           <div>
-            <label
-              htmlFor="activity-search"
-              className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500"
-            >
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
               Search Activities
             </label>
-
             <div className="relative">
               <Search
                 size={18}
                 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
               />
               <input
-                id="activity-search"
                 type="search"
                 value={activitySearch}
                 onChange={(e) => setActivitySearch(e.target.value)}
@@ -222,17 +194,13 @@ function AdminActivities() {
         </div>
       </div>
 
-      {/* =========================
-          SELECTED CLASS ACTIVITIES
-      ========================== */}
-
       <div className="mt-5 overflow-hidden rounded-lg border bg-white shadow-sm">
         <div className="flex flex-col gap-2 border-b px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-          <div className="min-w-0">
+          <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">
               Selected Class
             </p>
-            <h2 className="mt-1 truncate text-base font-semibold text-gray-800">
+            <h2 className="mt-1 text-base font-semibold text-gray-800">
               {selectedClass?.name || "No class selected"}
             </h2>
             {selectedClass && (
@@ -242,13 +210,6 @@ function AdminActivities() {
               </p>
             )}
           </div>
-
-          {activitySearch && (
-            <p className="text-xs text-gray-500">
-              Showing {selectedActivities.length} matching{" "}
-              {selectedActivities.length === 1 ? "activity" : "activities"}
-            </p>
-          )}
         </div>
 
         {selectedActivities.length > 0 ? (
@@ -264,62 +225,51 @@ function AdminActivities() {
 
               <thead className="border-b bg-gray-50">
                 <tr>
-                  <th className="px-3 py-3 text-xs font-semibold uppercase text-gray-500 sm:px-4">
-                    Activity
-                  </th>
-                  <th className="px-3 py-3 text-xs font-semibold uppercase text-gray-500 sm:px-4">
-                    Class
-                  </th>
-                  <th className="px-3 py-3 text-xs font-semibold uppercase text-gray-500 sm:px-4">
-                    Type
-                  </th>
-                  <th className="px-3 py-3 text-xs font-semibold uppercase text-gray-500 sm:px-4">
-                    Points
-                  </th>
-                  <th className="px-3 py-3 text-xs font-semibold uppercase text-gray-500 sm:px-4">
-                    Date
-                  </th>
+                  <th className="px-3 py-3 text-xs font-semibold uppercase text-gray-500 sm:px-4">Activity</th>
+                  <th className="px-3 py-3 text-xs font-semibold uppercase text-gray-500 sm:px-4">Class</th>
+                  <th className="px-3 py-3 text-xs font-semibold uppercase text-gray-500 sm:px-4">Type</th>
+                  <th className="px-3 py-3 text-xs font-semibold uppercase text-gray-500 sm:px-4">Points</th>
+                  <th className="px-3 py-3 text-xs font-semibold uppercase text-gray-500 sm:px-4"></th>
                 </tr>
               </thead>
 
               <tbody className="divide-y">
                 {selectedActivities.map((activity) => (
-                  <tr key={activity.id} className="hover:bg-gray-50">
-                    <td className="min-w-0 px-3 py-3 sm:px-4">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <div className="shrink-0 rounded-md bg-blue-50 p-1.5 text-blue-600">
+                  <tr
+                    key={activity.id}
+                    onClick={() =>
+                      navigate(
+                        `/admin/scores?classId=${selectedClassId}&activityId=${activity.id}`
+                      )
+                    }
+                    className="group cursor-pointer hover:bg-blue-50"
+                  >
+                    <td className="px-3 py-3 sm:px-4">
+                      <div className="flex items-center gap-2">
+                        <div className="rounded-md bg-blue-50 p-1.5 text-blue-600">
                           <ClipboardList size={16} />
                         </div>
-                        <span
-                          className="truncate text-sm font-medium text-gray-800"
-                          title={activity.title}
-                        >
+                        <span className="truncate text-sm font-medium text-gray-800">
                           {activity.title}
                         </span>
                       </div>
                     </td>
-
-                    <td className="min-w-0 px-3 py-3 text-sm text-gray-600 sm:px-4">
-                      <span
-                        className="block truncate"
-                        title={selectedClass?.name}
-                      >
-                        {selectedClass?.name || "Unknown Class"}
-                      </span>
+                    <td className="px-3 py-3 text-sm text-gray-600 sm:px-4">
+                      {selectedClass?.name || "Unknown Class"}
                     </td>
-
-                    <td className="min-w-0 px-3 py-3 sm:px-4">
-                      <span className="inline-block max-w-full truncate rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600">
+                    <td className="px-3 py-3 sm:px-4">
+                      <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600">
                         {activity.type}
                       </span>
                     </td>
-
-                    <td className="whitespace-nowrap px-3 py-3 text-sm text-gray-600 sm:px-4">
+                    <td className="px-3 py-3 text-sm text-gray-600 sm:px-4">
                       {activity.totalPoints}
                     </td>
-
-                    <td className="whitespace-nowrap px-3 py-3 text-sm text-gray-600 sm:px-4">
-                      {activity.date}
+                    <td className="px-3 py-3 text-right sm:px-4">
+                      <ChevronRight
+                        size={18}
+                        className="ml-auto text-gray-300 transition group-hover:translate-x-0.5 group-hover:text-blue-500"
+                      />
                     </td>
                   </tr>
                 ))}
@@ -328,10 +278,7 @@ function AdminActivities() {
           </div>
         ) : (
           <div className="p-10 text-center">
-            <ClipboardList
-              size={40}
-              className="mx-auto text-gray-400"
-            />
+            <ClipboardList size={40} className="mx-auto text-gray-400" />
             <h2 className="mt-4 font-semibold text-gray-700">
               {activitySearch
                 ? "No matching activities"
@@ -346,191 +293,91 @@ function AdminActivities() {
         )}
       </div>
 
-      {/* =========================
-          CREATE ACTIVITY MODAL
-      ========================== */}
-
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="w-full max-w-md rounded-xl bg-white shadow-lg">
-            {/* Header */}
-
             <div className="flex items-center justify-between border-b px-6 py-4">
               <div>
-                <h2 className="text-lg font-semibold text-gray-800">
-                  Create Activity
-                </h2>
-
-                <p className="text-sm text-gray-500">
-                  Add a new activity.
-                </p>
+                <h2 className="text-lg font-semibold text-gray-800">Create Activity</h2>
+                <p className="text-sm text-gray-500">Add a new activity.</p>
               </div>
-
-              <button
-                onClick={() => setShowModal(false)}
-                className="rounded-md p-2 text-gray-500 hover:bg-gray-100"
-              >
+              <button onClick={() => setShowModal(false)} className="rounded-md p-2 text-gray-500 hover:bg-gray-100">
                 <X size={20} />
               </button>
             </div>
 
-            {/* Form */}
-
-            <form
-              onSubmit={handleCreateActivity}
-              className="space-y-5 p-6"
-            >
-              {/* Activity Name */}
-
+            <form onSubmit={handleCreateActivity} className="space-y-5 p-6">
               <div>
-                <label
-                  htmlFor="activity-title"
-                  className="block text-sm font-medium text-gray-700"
-                >
-                  Activity Name
-                </label>
-
+                <label className="block text-sm font-medium text-gray-700">Activity Name</label>
                 <input
-                  id="activity-title"
                   name="title"
-                  type="text"
                   value={formData.title}
                   onChange={handleChange}
                   placeholder="e.g. Quiz 2"
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
                 />
               </div>
 
-              {/* Class */}
-
               <div>
-                <label
-                  htmlFor="activity-class"
-                  className="block text-sm font-medium text-gray-700"
-                >
-                  Class
-                </label>
-
+                <label className="block text-sm font-medium text-gray-700">Class</label>
                 <select
-                  id="activity-class"
                   name="classId"
                   value={formData.classId}
                   onChange={handleChange}
-                  className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-blue-500"
                 >
-                  <option value="">
-                    Select a class
-                  </option>
-
                   {classes.map((classItem) => (
-                    <option
-                      key={classItem.id}
-                      value={classItem.id}
-                    >
+                    <option key={classItem.id} value={classItem.id}>
                       {classItem.name}
                     </option>
                   ))}
                 </select>
               </div>
 
-              {/* Type */}
-
               <div>
-                <label
-                  htmlFor="activity-type"
-                  className="block text-sm font-medium text-gray-700"
-                >
-                  Activity Type
-                </label>
-
+                <label className="block text-sm font-medium text-gray-700">Activity Type</label>
                 <select
-                  id="activity-type"
                   name="type"
                   value={formData.type}
                   onChange={handleChange}
-                  className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-blue-500"
                 >
-                  <option value="Quiz">
-                    Quiz
-                  </option>
-
-                  <option value="Assignment">
-                    Assignment
-                  </option>
-
-                  <option value="Performance Task">
-                    Performance Task
-                  </option>
-
-                  <option value="Exam">
-                    Exam
-                  </option>
+                  <option value="Quiz">Quiz</option>
+                  <option value="Assignment">Assignment</option>
+                  <option value="Performance Task">Performance Task</option>
+                  <option value="Exam">Exam</option>
                 </select>
               </div>
 
-              {/* Points */}
-
               <div>
-                <label
-                  htmlFor="total-points"
-                  className="block text-sm font-medium text-gray-700"
-                >
-                  Total Points
-                </label>
-
+                <label className="block text-sm font-medium text-gray-700">Total Points</label>
                 <input
-                  id="total-points"
                   name="totalPoints"
                   type="number"
                   min="1"
                   value={formData.totalPoints}
-                  onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        totalPoints: e.target.value,
-                      })
-                    }
+                  onChange={handleChange}
                   placeholder="e.g. 20"
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
                 />
               </div>
 
-              {/* Date */}
-
               <div>
-                <label
-                  htmlFor="activity-date"
-                  className="block text-sm font-medium text-gray-700"
-                >
-                  Activity Date
-                </label>
-
+                <label className="block text-sm font-medium text-gray-700">Activity Date</label>
                 <input
-                  id="activity-date"
                   name="date"
                   type="date"
                   value={formData.date}
                   onChange={handleChange}
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
                 />
               </div>
 
-              {/* Buttons */}
-
               <div className="flex justify-end gap-3 border-t pt-5">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                >
+                <button type="button" onClick={() => setShowModal(false)} className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700">
                   Cancel
                 </button>
-
-                <button
-                  type="submit"
-                  disabled={isCreating}
-                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
+                <button type="submit" disabled={isCreating} className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
                   {isCreating ? "Creating..." : "Create Activity"}
                 </button>
               </div>

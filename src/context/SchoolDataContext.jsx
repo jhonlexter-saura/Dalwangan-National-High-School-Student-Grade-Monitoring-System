@@ -1,209 +1,131 @@
+import { createContext, useContext, useEffect, useState } from "react";
 import {
-  createContext,
-  useContext,
-  useState,
-} from "react";
+  getClasses,
+  getActivities,
+  getScores,
+  createClass as apiCreateClass,
+  createStudent,
+  addStudentToClass,
+  createActivity as apiCreateActivity,
+  saveScore,
+} from "../services/schoolDataService";
 
 const SchoolDataContext = createContext(null);
 
+const normalizeStudent = (student) => ({
+  ...student,
+  id: student._id,
+});
+
+const normalizeClass = (item) => ({
+  ...item,
+  id: item._id,
+  students: (item.students || []).map(normalizeStudent),
+});
+
+const normalizeActivity = (activity) => ({
+  ...activity,
+  id: activity._id,
+  classId: activity.class?._id || activity.class,
+  date: activity.date ? String(activity.date).slice(0, 10) : "",
+});
+
+const normalizeScore = (score) => ({
+  ...score,
+  id: score._id,
+  studentId: score.student?._id || score.student,
+  classId: score.class?._id || score.class,
+  activityId: score.activity?._id || score.activity,
+});
+
 export function SchoolDataProvider({ children }) {
-  const [classes, setClasses] = useState([
-    {
-      id: 1,
-      name: "Grade 10 - ICT A",
-      adviser: "Maria Santos",
-      schoolYear: "2026-2027",
-      students: [
-        {
-          id: 101,
-          name: "Juan Dela Cruz",
-          email: "juan@example.com",
-        },
-        {
-          id: 102,
-          name: "Ana Reyes",
-          email: "ana@example.com",
-        },
-        {
-          id: 103,
-          name: "Mark Santos",
-          email: "mark@example.com",
-        },
-      ],
-    },
-    {
-      id: 2,
-      name: "Grade 9 - ICT A",
-      adviser: "Juan Reyes",
-      schoolYear: "2026-2027",
-      students: [
-        {
-          id: 104,
-          name: "Sofia Cruz",
-          email: "sofia@example.com",
-        },
-        {
-          id: 105,
-          name: "Daniel Reyes",
-          email: "daniel@example.com",
-        },
-      ],
-    },
-  ]);
-
-  const [activities, setActivities] = useState([
-    {
-      id: 1,
-      title: "Quiz 1",
-      classId: 1,
-      type: "Quiz",
-      totalPoints: 20,
-      date: "2026-09-20",
-    },
-    {
-      id: 2,
-      title: "Performance Task 1",
-      classId: 1,
-      type: "Performance Task",
-      totalPoints: 50,
-      date: "2026-09-22",
-    },
-    {
-      id: 3,
-      title: "Quiz 1",
-      classId: 2,
-      type: "Quiz",
-      totalPoints: 20,
-      date: "2026-09-21",
-    },
-  ]);
-
+  const [classes, setClasses] = useState([]);
+  const [activities, setActivities] = useState([]);
   const [scores, setScores] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // -----------------------------
-  // Classes
-  // -----------------------------
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const [classesData, activitiesData, scoresData] = await Promise.all([
+        getClasses(),
+        getActivities(),
+        getScores(),
+      ]);
+      setClasses(classesData.map(normalizeClass));
+      setActivities(activitiesData.map(normalizeActivity));
+      setScores(scoresData.map(normalizeScore));
+    } catch (err) {
+      console.error("Failed to load school data:", err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const createClass = (classData) => {
-    const newClass = {
-      id: Date.now(),
-      ...classData,
-      students: [],
-    };
+  useEffect(() => {
+    loadData();
+  }, []);
 
+  const handleCreateClass = async (classData) => {
+    const created = await apiCreateClass(classData);
+    const newClass = normalizeClass(created);
     setClasses((prev) => [...prev, newClass]);
-
     return newClass;
   };
 
-  // -----------------------------
-  // Students
-  // -----------------------------
-
-  const inviteStudent = (classId, studentData) => {
-    const newStudent = {
-      id: Date.now(),
-      ...studentData,
-    };
+  const handleInviteStudent = async (classId, studentData) => {
+    const student = await createStudent(studentData);
+    const result = await addStudentToClass(student._id, classId);
+    const updatedClass = normalizeClass(result.class);
 
     setClasses((prev) =>
-      prev.map((classItem) =>
-        classItem.id === classId
-          ? {
-              ...classItem,
-              students: [
-                ...classItem.students,
-                newStudent,
-              ],
-            }
-          : classItem
-      )
+      prev.map((item) => (item.id === classId ? updatedClass : item))
     );
 
-    return newStudent;
+    return normalizeStudent(student);
   };
 
-  // -----------------------------
-  // Activities
-  // -----------------------------
-
-  const createActivity = (activityData) => {
-    const newActivity = {
-      id: Date.now(),
-      ...activityData,
-    };
-
-    setActivities((prev) => [
-      ...prev,
-      newActivity,
-    ]);
-
+  const handleCreateActivity = async (activityData) => {
+    const created = await apiCreateActivity(activityData);
+    const newActivity = normalizeActivity(created);
+    setActivities((prev) => [...prev, newActivity]);
     return newActivity;
   };
 
-  // -----------------------------
-  // Scores
-  // -----------------------------
+  const handleSaveScores = async ({ classId, activityId, scoreData }) => {
+    const savedScores = [];
 
-  const saveScores = ({
-    classId,
-    activityId,
-    scoreData,
-  }) => {
-    const activity = activities.find(
-      (item) => item.id === activityId
-    );
+    for (const [studentId, score] of Object.entries(scoreData)) {
+      if (score === "") continue;
 
-    if (!activity) {
-      return;
+      const saved = await saveScore({
+        studentId,
+        classId,
+        activityId,
+        score: Number(score),
+      });
+
+      savedScores.push(normalizeScore(saved));
     }
 
     setScores((prev) => {
-      const updatedScores = [...prev];
-
-      Object.entries(scoreData).forEach(
-        ([studentId, score]) => {
-          // Do not save blank score fields.
-          if (score === "") {
-            return;
-          }
-
-          const numericScore = Number(score);
-
-          // Reject invalid, negative, or over-the-limit scores.
-          if (
-            Number.isNaN(numericScore) ||
-            numericScore < 0 ||
-            numericScore > activity.totalPoints
-          ) {
-            return;
-          }
-
-          const existingIndex =
-            updatedScores.findIndex(
-              (item) =>
-                item.classId === classId &&
-                item.activityId === activityId &&
-                item.studentId === Number(studentId)
-            );
-
-          const scoreRecord = {
-            classId,
-            activityId,
-            studentId: Number(studentId),
-            score: numericScore,
-          };
-
-          if (existingIndex >= 0) {
-            updatedScores[existingIndex] = scoreRecord;
-          } else {
-            updatedScores.push(scoreRecord);
-          }
-        }
-      );
-
-      return updatedScores;
+      const updated = [...prev];
+      for (const newScore of savedScores) {
+        const index = updated.findIndex(
+          (item) =>
+            item.studentId === newScore.studentId &&
+            item.activityId === newScore.activityId
+        );
+        if (index >= 0) updated[index] = newScore;
+        else updated.push(newScore);
+      }
+      return updated;
     });
+
+    return savedScores;
   };
 
   return (
@@ -212,11 +134,13 @@ export function SchoolDataProvider({ children }) {
         classes,
         activities,
         scores,
-
-        createClass,
-        inviteStudent,
-        createActivity,
-        saveScores,
+        loading,
+        error,
+        reloadData: loadData,
+        createClass: handleCreateClass,
+        inviteStudent: handleInviteStudent,
+        createActivity: handleCreateActivity,
+        saveScores: handleSaveScores,
       }}
     >
       {children}

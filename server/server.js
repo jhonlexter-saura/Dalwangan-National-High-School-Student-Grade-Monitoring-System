@@ -7,6 +7,8 @@ const connectDB = require("./config/db");
 
 const classRoutes = require("./routes/classes");
 const studentRoutes = require("./routes/students");
+const activityRoutes = require("./routes/activities");
+const scoreRoutes = require("./routes/scores");
 
 dotenv.config();
 
@@ -22,6 +24,8 @@ app.use(express.json());
 
 app.use("/api/classes", classRoutes);
 app.use("/api/students", studentRoutes);
+app.use("/api/activities", activityRoutes);
+app.use("/api/scores", scoreRoutes);
 
 app.get("/", (req, res) => {
   res.json({
