@@ -9,6 +9,9 @@ const classRoutes = require("./routes/classes");
 const studentRoutes = require("./routes/students");
 const activityRoutes = require("./routes/activities");
 const scoreRoutes = require("./routes/scores");
+const userRoutes = require("./routes/users");
+
+const authRoutes = require("./routes/auth");
 
 dotenv.config();
 
@@ -22,10 +25,14 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+app.use("/api/auth", authRoutes);
+
 app.use("/api/classes", classRoutes);
 app.use("/api/students", studentRoutes);
 app.use("/api/activities", activityRoutes);
 app.use("/api/scores", scoreRoutes);
+
+app.use("/api/users", userRoutes),
 
 app.get("/", (req, res) => {
   res.json({

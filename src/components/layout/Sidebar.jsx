@@ -1,8 +1,12 @@
 import {
   LayoutDashboard,
-  Users,
-  BookOpen,
+  School,
   ClipboardList,
+  ChartNoAxesColumnIncreasing,
+  GraduationCap,
+  UserPlus,
+  UserCog,
+  ShieldPlus,
   Settings,
   X,
 } from "lucide-react";
@@ -11,7 +15,10 @@ import { NavLink } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 
 function Sidebar({ isOpen, onClose }) {
-  const {user} = useAuth();
+  const { user } = useAuth();
+
+  const role = user?.role;
+
   return (
     <>
       {/* Mobile overlay */}
@@ -42,6 +49,7 @@ function Sidebar({ isOpen, onClose }) {
             <p className="text-xs text-gray-500">
               Grade Monitoring System
             </p>
+
             <div className="mt-2 h-1 w-10 rounded-full bg-yellow-400" />
           </div>
 
@@ -49,68 +57,111 @@ function Sidebar({ isOpen, onClose }) {
           <button
             onClick={onClose}
             className="rounded-md p-2 hover:bg-gray-100 lg:hidden"
+            aria-label="Close sidebar"
           >
             <X size={20} />
           </button>
         </div>
 
-        {/* Navigation - role-aware: each role only sees its own links,
-            Settings is the one item every role gets. */}
+        {/* Navigation */}
         <nav className="p-4">
-  <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
-    Main
-  </p>
+          {/* ==================== MAIN ==================== */}
+          <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
+            Main
+          </p>
 
-  <div className="space-y-1">
-    <NavItem
-      to={`/${user?.role}`}
-      icon={<LayoutDashboard size={20} />}
-      label="Dashboard"
-    />
+          <div className="space-y-1">
+            {/* Dashboard - All roles */}
+            <NavItem
+              to={`/${role}`}
+              icon={<LayoutDashboard size={20} />}
+              label="Dashboard"
+              onClick={onClose}
+            />
 
-    {(user?.role === "admin" || user?.role === "teacher") && (
-      <>
-        <NavItem
-          to={`/${user.role}/classes`}
-          icon={<Users size={20} />}
-          label="Classes"
-        />
+            {/* ==================== ADMIN + TEACHER ==================== */}
+            {(role === "admin" || role === "teacher") && (
+              <>
+                <NavItem
+                  to={`/${role}/classes`}
+                  icon={<School size={20} />}
+                  label="Classes"
+                  onClick={onClose}
+                />
 
-        <NavItem
-          to={`/${user.role}/activities`}
-          icon={<ClipboardList size={20} />}
-          label="Activities"
-        />
+                <NavItem
+                  to={`/${role}/activities`}
+                  icon={<ClipboardList size={20} />}
+                  label="Activities"
+                  onClick={onClose}
+                />
 
-        <NavItem
-          to={`/${user.role}/scores`}
-          icon={<BookOpen size={20} />}
-          label="Scores"
-        />
-      </>
-    )}
+                <NavItem
+                  to={`/${role}/scores`}
+                  icon={<ChartNoAxesColumnIncreasing size={20} />}
+                  label="Scores"
+                  onClick={onClose}
+                />
+              </>
+            )}
 
-    {user?.role === "student" && (
-      <NavItem
-        to="/student/grades"
-        icon={<BookOpen size={20} />}
-        label="Grades"
-      />
-    )}
-  </div>
+            {/* ==================== STUDENT ==================== */}
+            {role === "student" && (
+              <NavItem
+                to="/student/grades"
+                icon={<GraduationCap size={20} />}
+                label="Grades"
+                onClick={onClose}
+              />
+            )}
+          </div>
 
-  <p className="mb-2 mt-8 px-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
-    System
-  </p>
+          {/* ==================== ADMINISTRATION ==================== */}
+          {role === "admin" && (
+            <>
+              <p className="mb-2 mt-8 px-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
+                Account Management
+              </p>
 
-  <div className="space-y-1">
-    <NavItem
-      to={`/${user?.role}/settings`}
-      icon={<Settings size={20} />}
-      label="Settings"
-    />
-  </div>
-</nav>
+              <div className="space-y-1">
+                <NavItem
+                  to="/admin/accounts/students"
+                  icon={<UserPlus size={20} />}
+                  label="Student Accounts"
+                  onClick={onClose}
+                />
+
+                <NavItem
+                  to="/admin/accounts/teachers"
+                  icon={<UserCog size={20} />}
+                  label="Teacher Accounts"
+                  onClick={onClose}
+                />
+
+                <NavItem
+                  to="/admin/accounts/admins"
+                  icon={<ShieldPlus size={20} />}
+                  label="Admin Accounts"
+                  onClick={onClose}
+                />
+              </div>
+            </>
+          )}
+
+          {/* ==================== SYSTEM ==================== */}
+          <p className="mb-2 mt-8 px-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
+            System
+          </p>
+
+          <div className="space-y-1">
+            <NavItem
+              to={`/${role}/settings`}
+              icon={<Settings size={20} />}
+              label="Settings"
+              onClick={onClose}
+            />
+          </div>
+        </nav>
       </aside>
     </>
   );
@@ -119,10 +170,11 @@ function Sidebar({ isOpen, onClose }) {
 /*
  * Reusable navigation item
  */
-function NavItem({ to, icon, label }) {
+function NavItem({ to, icon, label, onClick }) {
   return (
     <NavLink
       to={to}
+      onClick={onClick}
       className={({ isActive }) =>
         `
         flex w-full items-center gap-3

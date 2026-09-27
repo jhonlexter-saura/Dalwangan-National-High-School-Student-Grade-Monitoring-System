@@ -2,6 +2,14 @@ const mongoose = require("mongoose");
 
 const studentSchema = new mongoose.Schema(
   {
+    // Links this student profile to their login account
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      unique: true,
+      sparse: true,
+    },
+
     studentId: {
       type: String,
       required: true,

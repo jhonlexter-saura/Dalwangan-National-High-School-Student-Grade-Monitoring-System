@@ -5,61 +5,56 @@ import {
   useState,
 } from "react";
 
+import { loginUser } from "../services/schoolDataService";
+
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    const savedUser = localStorage.getItem("dnhs_user");
 
-  const login = (username, password) => {
-    // Temporary accounts for development
-    const users = [
-      {
-        id: 1,
-        username: "student",
-        password: "student123",
-        name: "Juan Dela Cruz",
-        role: "student",
-      },
-      {
-        id: 2,
-        username: "teacher",
-        password: "teacher123",
-        name: "Maria Santos",
-        role: "teacher",
-      },
-      {
-        id: 3,
-        username: "admin",
-        password: "admin123",
-        name: "DNHS Administrator",
-        role: "admin",
-      },
-    ];
-
-    const foundUser = users.find(
-      (user) =>
-        user.username === username &&
-        user.password === password
-    );
-
-    if (!foundUser) {
-      return {
-        success: false,
-        message: "Invalid username or password.",
-      };
+    if (!savedUser) {
+      return null;
     }
 
-    setUser(foundUser);
+    try {
+      return JSON.parse(savedUser);
+    } catch {
+      localStorage.removeItem("dnhs_user");
+      return null;
+    }
+  });
 
-    return {
-      success: true,
-      user: foundUser,
-    };
+  const login = async (email, password) => {
+    try {
+      const result = await loginUser({
+        email,
+        password,
+      });
+
+      setUser(result.user);
+
+      localStorage.setItem(
+        "dnhs_user",
+        JSON.stringify(result.user)
+      );
+
+      return {
+        success: true,
+        user: result.user,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+      };
+    }
   };
 
   const logout = useCallback(() => {
-  setUser(null);
-}, []);
+    setUser(null);
+    localStorage.removeItem("dnhs_user");
+  }, []);
 
   return (
     <AuthContext.Provider

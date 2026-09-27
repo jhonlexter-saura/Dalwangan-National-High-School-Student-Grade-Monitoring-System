@@ -5,6 +5,13 @@ import AdminScores from "../pages/admin/AdminScores";
 import AdminProfile from "../pages/admin/AdminProfile";
 import AdminSettings from "../pages/admin/AdminSettings";
 
+import AdminStudentAccounts from "../pages/admin/AdminStudentAccounts";
+import AdminStudentAccountCreate from "../pages/admin/AdminStudentAccountCreate";
+import AdminTeacherAccountCreate from "../pages/admin/AdminTeacherAccountCreate";
+import AdminTeacherAccounts from "../pages/admin/AdminTeacherAccounts";
+import AdminAccountCreate from "../pages/admin/AdminAccountCreate";
+import AdminAccounts from "../pages/admin/AdminAccounts";
+
 const adminRoutes = [
   {
     path: "/admin",
@@ -29,6 +36,30 @@ const adminRoutes = [
   {
     path: "/admin/settings",
     element: <AdminSettings />,
+  },
+  {
+    path: "/admin/accounts/students/create",
+    element: <AdminStudentAccountCreate />,
+  },
+  {
+    path: "/admin/accounts/students",
+    element: <AdminStudentAccounts />,
+  },
+  {
+    path: "/admin/accounts/teachers",
+    element: <AdminTeacherAccounts/>,
+  },
+  {
+    path: "/admin/accounts/teachers/create",
+    element: <AdminTeacherAccountCreate />,
+  },
+  {
+    path: "/admin/accounts/admins/create",
+    element: <AdminAccountCreate />,
+  },
+  {
+    path: "/admin/accounts/admins",
+    element: <AdminAccounts />,
   },
 ];
 

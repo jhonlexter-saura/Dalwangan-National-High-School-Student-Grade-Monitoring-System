@@ -95,3 +95,30 @@ export function saveScore(data) {
     body: JSON.stringify(data),
   });
 }
+
+
+export function getUsers() {
+  return request("/users");
+}
+
+export function createUser(data) {
+  return request("/users", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function getTeachers() {
+  return request("/users?role=teacher");
+}
+
+export function getAdmins() {
+  return request("/users?role=admin");
+}
+
+export function loginUser(data) {
+  return request("/auth/login", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
