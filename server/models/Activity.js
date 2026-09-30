@@ -20,9 +20,21 @@ const activitySchema = new mongoose.Schema(
       required: true,
     },
 
+    academicPeriod: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "AcademicPeriod",
+      required: true,
+    },
+
     type: {
       type: String,
-      enum: ["quiz", "assignment", "exam", "project", "activity"],
+      enum: [
+        "quiz",
+        "assignment",
+        "exam",
+        "project",
+        "activity",
+      ],
       default: "activity",
     },
 

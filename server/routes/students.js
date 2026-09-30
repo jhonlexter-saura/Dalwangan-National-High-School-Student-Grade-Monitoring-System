@@ -139,4 +139,86 @@ router.post("/:studentId/classes/:classId", async (req, res) => {
   }
 });
 
+
+// TEACHER: ADD STUDENT TO OWN CLASS
+router.post(
+  "/:studentId/classes/:classId/teacher/:userId",
+  async (req, res) => {
+    try {
+      const { studentId, classId, userId } = req.params;
+
+      const Teacher = require("../models/Teacher");
+
+      const teacher = await Teacher.findOne({
+        user: userId,
+      });
+
+      if (!teacher) {
+        return res.status(404).json({
+          error: "Teacher profile not found",
+        });
+      }
+
+      const student = await Student.findById(studentId);
+
+      if (!student) {
+        return res.status(404).json({
+          error: "Student not found",
+        });
+      }
+
+      const classData = await Class.findById(classId);
+
+      if (!classData) {
+        return res.status(404).json({
+          error: "Class not found",
+        });
+      }
+
+      // Make sure this class belongs to the teacher
+      if (
+        classData.teacher.toString() !==
+        teacher._id.toString()
+      ) {
+        return res.status(403).json({
+          error: "You do not have permission to modify this class",
+        });
+      }
+
+      // Prevent duplicate enrollment
+      const alreadyEnrolled = classData.students.some(
+        (id) => id.toString() === student._id.toString()
+      );
+
+      if (alreadyEnrolled) {
+        return res.status(409).json({
+          error: "Student is already enrolled in this class",
+        });
+      }
+
+      classData.students.push(student._id);
+
+      await classData.save();
+
+      const updatedClass = await Class.findById(classId)
+        .populate("teacher")
+        .populate("students");
+
+      res.json({
+        message: "Student added to class successfully",
+        class: updatedClass,
+      });
+    } catch (error) {
+      console.error(
+        "Teacher add student error:",
+        error.message
+      );
+
+      res.status(500).json({
+        error: "Failed to add student to class",
+      });
+    }
+  }
+);
+
 module.exports = router;

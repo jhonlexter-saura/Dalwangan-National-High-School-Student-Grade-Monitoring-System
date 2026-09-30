@@ -26,8 +26,17 @@ const normalizeClass = (item) => ({
 const normalizeActivity = (activity) => ({
   ...activity,
   id: activity._id,
-  classId: activity.class?._id || activity.class,
-  date: activity.date ? String(activity.date).slice(0, 10) : "",
+
+  classId:
+    activity.class?._id || activity.class,
+
+  academicPeriodId:
+    activity.academicPeriod?._id ||
+    activity.academicPeriod,
+
+  date: activity.date
+    ? String(activity.date).slice(0, 10)
+    : "",
 });
 
 const normalizeScore = (score) => ({

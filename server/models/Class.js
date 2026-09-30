@@ -19,10 +19,10 @@ const classSchema = new mongoose.Schema(
       required: true,
     },
 
-    adviser: {
-      type: String,
+    teacher: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Teacher",
       required: true,
-      trim: true,
     },
 
     schoolYear: {

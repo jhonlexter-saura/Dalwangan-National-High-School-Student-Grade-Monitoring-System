@@ -122,3 +122,35 @@ export function loginUser(data) {
     body: JSON.stringify(data),
   });
 }
+
+export function getClassesByTeacher(userId) {
+  return request(`/classes/teacher/${userId}`);
+}
+
+export function createClassForTeacher(userId, data) {
+  return request(`/classes/teacher/${userId}`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function addStudentToClassAsTeacher(
+  studentId,
+  classId,
+  userId
+) {
+  return request(
+    `/students/${studentId}/classes/${classId}/teacher/${userId}`,
+    {
+      method: "POST",
+    }
+  );
+}
+
+export function getAcademicPeriods(schoolYear) {
+  const query = schoolYear
+    ? `?schoolYear=${encodeURIComponent(schoolYear)}`
+    : "";
+
+  return request(`/academic-periods${query}`);
+}
