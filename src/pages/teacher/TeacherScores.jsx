@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   BookOpen,
-  CheckCircle2,
   ClipboardList,
   Loader2,
   Save,
 } from "lucide-react";
 
 import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../../context/ToastContext";
 
 import {
   getClassesByTeacher,
@@ -19,6 +20,12 @@ import {
 
 export default function TeacherScores() {
   const { user } = useAuth();
+  const { showToast } = useToast();
+  const [searchParams] = useSearchParams();
+
+  const requestedClassId = searchParams.get("classId") || "";
+  const requestedPeriodId = searchParams.get("periodId") || "";
+  const requestedActivityId = searchParams.get("activityId") || "";
 
   const [classes, setClasses] = useState([]);
   const [periods, setPeriods] = useState([]);
@@ -37,8 +44,6 @@ export default function TeacherScores() {
 
   const [saving, setSaving] = useState(false);
 
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
 
   /*
    * Load teacher's classes
@@ -47,17 +52,22 @@ export default function TeacherScores() {
     async function loadClasses() {
       try {
         setLoading(true);
-        setError("");
 
         const data = await getClassesByTeacher(user._id);
 
         setClasses(data);
 
         if (data.length > 0) {
-          setSelectedClassId(data[0]._id);
+          const requestedClass = data.find(
+            (item) => item._id === requestedClassId
+          );
+
+          setSelectedClassId(
+            requestedClass?._id || data[0]._id
+          );
         }
       } catch (err) {
-        setError(err.message);
+        showToast(err.message, "error");
       } finally {
         setLoading(false);
       }
@@ -66,7 +76,7 @@ export default function TeacherScores() {
     if (user?._id) {
       loadClasses();
     }
-  }, [user]);
+  }, [user, requestedClassId, showToast]);
 
   /*
    * Selected class
@@ -90,7 +100,6 @@ export default function TeacherScores() {
 
       try {
         setLoadingPeriods(true);
-        setError("");
 
         const data = await getAcademicPeriods(
           selectedClass.schoolYear
@@ -102,7 +111,13 @@ export default function TeacherScores() {
           (period) => period.status === "active"
         );
 
-        if (activePeriod) {
+        const requestedPeriod = data.find(
+          (period) => period._id === requestedPeriodId
+        );
+
+        if (requestedPeriod) {
+          setSelectedPeriodId(requestedPeriod._id);
+        } else if (activePeriod) {
           setSelectedPeriodId(activePeriod._id);
         } else if (data.length > 0) {
           setSelectedPeriodId(data[0]._id);
@@ -110,14 +125,14 @@ export default function TeacherScores() {
           setSelectedPeriodId("");
         }
       } catch (err) {
-        setError(err.message);
+        showToast(err.message, "error");
       } finally {
         setLoadingPeriods(false);
       }
     }
 
     loadPeriods();
-  }, [selectedClass]);
+  }, [selectedClass, requestedPeriodId, showToast]);
 
   /*
    * Load activities
@@ -132,23 +147,29 @@ export default function TeacherScores() {
 
       try {
         setLoadingActivities(true);
-        setError("");
 
         const data = await getActivitiesByClass(
           selectedClassId
         );
 
         setActivities(data);
-        setSelectedActivityId("");
+
+        const requestedActivity = data.find(
+          (activity) => activity._id === requestedActivityId
+        );
+
+        setSelectedActivityId(
+          requestedActivity?._id || ""
+        );
       } catch (err) {
-        setError(err.message);
+        showToast(err.message, "error");
       } finally {
         setLoadingActivities(false);
       }
     }
 
     loadActivities();
-  }, [selectedClassId]);
+  }, [selectedClassId, requestedActivityId, showToast]);
 
   /*
    * Activities belonging to selected period
@@ -178,7 +199,6 @@ export default function TeacherScores() {
 
       try {
         setLoadingScores(true);
-        setError("");
 
         const data = await getScoresByActivity(
           selectedActivityId
@@ -198,14 +218,14 @@ export default function TeacherScores() {
 
         setScores(scoreMap);
       } catch (err) {
-        setError(err.message);
+        showToast(err.message, "error");
       } finally {
         setLoadingScores(false);
       }
     }
 
     loadScores();
-  }, [selectedActivityId]);
+  }, [selectedActivityId, showToast]);
 
   /*
    * Selected activity
@@ -228,8 +248,7 @@ export default function TeacherScores() {
       },
     }));
 
-    setMessage("");
-    setError("");
+
   };
 
   /*
@@ -237,26 +256,24 @@ export default function TeacherScores() {
    */
   const handleSaveScores = async () => {
     if (!selectedClassId) {
-      setError("Please select a class.");
+      showToast("Please select a class.", "warning");
       return;
     }
 
     if (!selectedActivity) {
-      setError("Please select an activity.");
+      showToast("Please select an activity.", "warning");
       return;
     }
 
     const students = selectedClass?.students || [];
 
     if (students.length === 0) {
-      setError("There are no students enrolled in this class.");
+      showToast("There are no students enrolled in this class.", "warning");
       return;
     }
 
     try {
       setSaving(true);
-      setError("");
-      setMessage("");
 
       for (const student of students) {
         const studentId = student._id || student.id;
@@ -306,9 +323,9 @@ export default function TeacherScores() {
         });
       }
 
-      setMessage("Scores saved successfully.");
+      showToast("Scores saved successfully.", "success");
     } catch (err) {
-      setError(err.message);
+      showToast(err.message, "error");
     } finally {
       setSaving(false);
     }
@@ -438,21 +455,6 @@ export default function TeacherScores() {
           </div>
         </div>
       </div>
-
-      {/* Error */}
-      {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
-
-      {/* Success */}
-      {message && (
-        <div className="flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-          <CheckCircle2 className="h-5 w-5" />
-          {message}
-        </div>
-      )}
 
       {/* Activity information */}
       {selectedActivity && (

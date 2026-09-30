@@ -3,6 +3,7 @@ import { Plus, Users, GraduationCap } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
 import {
   getClassesByTeacher,
   createClassForTeacher,
@@ -10,13 +11,12 @@ import {
 
 function TeacherClasses() {
   const { user } = useAuth();
+  const { showToast } = useToast();
 
   const navigate = useNavigate();
 
   const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
   const [showCreateForm, setShowCreateForm] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -24,6 +24,10 @@ function TeacherClasses() {
     section: "",
     gradeLevel: "",
     schoolYear: "2026-2027",
+    gradingSystemEnabled: false,
+    writtenWorkPercentage: "30",
+    performanceTaskPercentage: "50",
+    assessmentPercentage: "20",
   });
 
   const loadClasses = async () => {
@@ -31,13 +35,11 @@ function TeacherClasses() {
 
     try {
       setLoading(true);
-      setError("");
-
       const data = await getClassesByTeacher(user._id);
       setClasses(data);
     } catch (err) {
       console.error("Failed to load teacher classes:", err);
-      setError(err.message || "Failed to load classes");
+      showToast(err.message || "Failed to load classes", "error");
     } finally {
       setLoading(false);
     }
@@ -45,7 +47,7 @@ function TeacherClasses() {
 
   useEffect(() => {
     loadClasses();
-  }, [user?._id]);
+  }, [user?._id, showToast]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -60,11 +62,42 @@ function TeacherClasses() {
     e.preventDefault();
 
     try {
-      setError("");
+      const percentages = [
+        Number(formData.writtenWorkPercentage),
+        Number(formData.performanceTaskPercentage),
+        Number(formData.assessmentPercentage),
+      ];
+
+      if (formData.gradingSystemEnabled && percentages.some((value) => Number.isNaN(value) || value < 0 || value > 100)) {
+        showToast("Each grading percentage must be between 0 and 100.", "warning");
+        return;
+      }
+
+      if (formData.gradingSystemEnabled && percentages.reduce((sum, value) => sum + value, 0) !== 100) {
+        showToast("Grading percentages must total 100%.", "warning");
+        return;
+      }
+
+      const gradingSystem = {
+        enabled: formData.gradingSystemEnabled,
+        components: formData.gradingSystemEnabled
+          ? [
+              { key: "written_work", name: "Written Work", percentage: percentages[0] },
+              { key: "performance_task", name: "Performance Tasks", percentage: percentages[1] },
+              { key: "assessment", name: "Assessment", percentage: percentages[2] },
+            ]
+          : [],
+      };
 
       const createdClass = await createClassForTeacher(
         user._id,
-        formData
+        {
+          name: formData.name,
+          section: formData.section,
+          gradeLevel: formData.gradeLevel,
+          schoolYear: formData.schoolYear,
+          gradingSystem,
+        }
       );
 
       setClasses((prev) => [createdClass, ...prev]);
@@ -74,12 +107,17 @@ function TeacherClasses() {
         section: "",
         gradeLevel: "",
         schoolYear: "2026-2027",
+        gradingSystemEnabled: false,
+        writtenWorkPercentage: "30",
+        performanceTaskPercentage: "50",
+        assessmentPercentage: "20",
       });
 
       setShowCreateForm(false);
+      showToast("Class created successfully.", "success");
     } catch (err) {
       console.error("Failed to create class:", err);
-      setError(err.message || "Failed to create class");
+      showToast(err.message || "Failed to create class", "error");
     }
   };
 
@@ -105,13 +143,6 @@ function TeacherClasses() {
           Create Class
         </button>
       </div>
-
-      {/* Error */}
-      {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-          {error}
-        </div>
-      )}
 
       {/* Create Form */}
       {showCreateForm && (
@@ -191,6 +222,71 @@ function TeacherClasses() {
                 <option value="2026-2027">2026-2027</option>
                 <option value="2027-2028">2027-2028</option>
               </select>
+            </div>
+
+            <div className="md:col-span-2 rounded-xl border border-gray-200 bg-gray-50 p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="font-semibold text-gray-900">Grading System</h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Automatically compute grades from activity scores.
+                  </p>
+                </div>
+
+                <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-700">
+                  <input
+                    type="checkbox"
+                    name="gradingSystemEnabled"
+                    checked={formData.gradingSystemEnabled}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        gradingSystemEnabled: e.target.checked,
+                      }))
+                    }
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  Automatic
+                </label>
+              </div>
+
+              {formData.gradingSystemEnabled && (
+                <div className="mt-4 grid gap-4 sm:grid-cols-3">
+                  {[
+                    ["writtenWorkPercentage", "Written Work"],
+                    ["performanceTaskPercentage", "Performance Tasks"],
+                    ["assessmentPercentage", "Assessment"],
+                  ].map(([name, label]) => (
+                    <div key={name}>
+                      <label className="block text-sm font-medium text-gray-700">
+                        {label}
+                      </label>
+                      <div className="relative mt-1">
+                        <input
+                          name={name}
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={formData[name]}
+                          onChange={handleChange}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2.5 pr-9 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">%</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {formData.gradingSystemEnabled && (
+                <p className="mt-3 text-sm text-gray-600">
+                  Total: {
+                    Number(formData.writtenWorkPercentage || 0) +
+                    Number(formData.performanceTaskPercentage || 0) +
+                    Number(formData.assessmentPercentage || 0)
+                  }%
+                </p>
+              )}
             </div>
 
             <div className="flex gap-3 md:col-span-2">

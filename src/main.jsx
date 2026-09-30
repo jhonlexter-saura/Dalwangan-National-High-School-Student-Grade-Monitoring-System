@@ -6,12 +6,15 @@ import App from "./App.jsx";
 
 import { AuthProvider } from "./context/AuthContext.jsx";
 import { SchoolDataProvider } from "./context/SchoolDataContext.jsx";
+import { ToastProvider } from "./context/ToastContext.jsx";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <AuthProvider>
       <SchoolDataProvider>
-        <App />
+        <ToastProvider>
+          <App />
+        </ToastProvider>
       </SchoolDataProvider>
     </AuthProvider>
   </StrictMode>

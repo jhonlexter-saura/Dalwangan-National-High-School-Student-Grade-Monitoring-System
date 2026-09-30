@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Plus,
   ClipboardList,
   CalendarDays,
   X,
+  ArrowRight,
 } from "lucide-react";
 
 import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
 import {
   getClassesByTeacher,
   getAcademicPeriods,
@@ -16,6 +19,8 @@ import {
 
 function TeacherActivities() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const { showToast } = useToast();
 
   const [classes, setClasses] = useState([]);
   const [periods, setPeriods] = useState([]);
@@ -31,13 +36,11 @@ function TeacherActivities() {
   const [loadingActivities, setLoadingActivities] =
     useState(false);
 
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-
   const [formData, setFormData] = useState({
     title: "",
     description: "",
     type: "activity",
+    gradingCategory: "written_work",
     totalPoints: "",
     date: "",
   });
@@ -52,7 +55,7 @@ function TeacherActivities() {
 
       try {
         setLoading(true);
-        setError("");
+        
 
         const data = await getClassesByTeacher(user._id);
 
@@ -64,8 +67,9 @@ function TeacherActivities() {
       } catch (err) {
         console.error("Failed to load classes:", err);
 
-        setError(
-          err.message || "Failed to load your classes."
+        showToast(
+          err.message || "Failed to load your classes.",
+          "error"
         );
       } finally {
         setLoading(false);
@@ -73,7 +77,7 @@ function TeacherActivities() {
     };
 
     loadClasses();
-  }, [user?._id]);
+  }, [user?._id, showToast]);
 
   // --------------------------------------------------
   // Load academic periods whenever class changes
@@ -92,7 +96,7 @@ function TeacherActivities() {
       }
 
       try {
-        setError("");
+        
 
         const data = await getAcademicPeriods(
           selectedClass.schoolYear
@@ -113,15 +117,16 @@ function TeacherActivities() {
           err
         );
 
-        setError(
+        showToast(
           err.message ||
-            "Failed to load academic periods."
+            "Failed to load academic periods.",
+          "error"
         );
       }
     };
 
     loadPeriods();
-  }, [selectedClassId, classes]);
+  }, [selectedClassId, classes, showToast]);
 
   // --------------------------------------------------
   // Load activities
@@ -147,9 +152,10 @@ function TeacherActivities() {
           err
         );
 
-        setError(
+        showToast(
           err.message ||
-            "Failed to load activities."
+            "Failed to load activities.",
+          "error"
         );
       } finally {
         setLoadingActivities(false);
@@ -157,7 +163,7 @@ function TeacherActivities() {
     };
 
     loadActivities();
-  }, [selectedClassId]);
+  }, [selectedClassId, showToast]);
 
   // --------------------------------------------------
   // Filter by trimester
@@ -183,22 +189,36 @@ function TeacherActivities() {
   const handleChange = (e) => {
     const { name, value } = e.target;
 
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+    setFormData((prev) => {
+      const next = { ...prev, [name]: value };
+
+      if (name === "type") {
+        const defaultCategories = {
+          quiz: "written_work",
+          assignment: "written_work",
+          project: "performance_task",
+          performance_task: "performance_task",
+          exam: "assessment",
+          activity: "written_work",
+        };
+
+        next.gradingCategory = defaultCategories[value] || prev.gradingCategory;
+      }
+
+      return next;
+    });
   };
 
   const handleCreateActivity = async (e) => {
     e.preventDefault();
 
     if (!selectedClassId) {
-      setError("Please select a class.");
+      showToast("Please select a class.", "warning");
       return;
     }
 
     if (!selectedPeriodId) {
-      setError("Please select a trimester.");
+      showToast("Please select an academic period.", "warning");
       return;
     }
 
@@ -207,15 +227,16 @@ function TeacherActivities() {
       !formData.totalPoints ||
       !formData.date
     ) {
-      setError(
-        "Title, total points, and date are required."
+      showToast(
+        "Title, total points, and date are required.",
+        "warning"
       );
       return;
     }
 
     try {
-      setError("");
-      setSuccess("");
+      
+      
 
       const created = await createActivity({
         title: formData.title,
@@ -223,6 +244,7 @@ function TeacherActivities() {
         classId: selectedClassId,
         academicPeriodId: selectedPeriodId,
         type: formData.type,
+        gradingCategory: formData.gradingCategory,
         totalPoints: Number(formData.totalPoints),
         date: formData.date,
       });
@@ -233,25 +255,23 @@ function TeacherActivities() {
         title: "",
         description: "",
         type: "activity",
+        gradingCategory: "written_work",
         totalPoints: "",
         date: "",
       });
 
       setShowCreateModal(false);
 
-      setSuccess("Activity created successfully.");
-
-      setTimeout(() => {
-        setSuccess("");
-      }, 3000);
+      showToast("Activity created successfully.", "success");
     } catch (err) {
       console.error(
         "Failed to create activity:",
         err
       );
 
-      setError(
-        err.message || "Failed to create activity."
+      showToast(
+        err.message || "Failed to create activity.",
+        "error"
       );
     }
   };
@@ -295,19 +315,6 @@ function TeacherActivities() {
           Create Activity
         </button>
       </div>
-
-      {/* Messages */}
-      {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-          {error}
-        </div>
-      )}
-
-      {success && (
-        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-600">
-          {success}
-        </div>
-      )}
 
       {/* Filters */}
       <div className="grid gap-4 rounded-xl border border-gray-200 bg-white p-5 shadow-sm md:grid-cols-2">
@@ -407,9 +414,15 @@ function TeacherActivities() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {visibleActivities.map((activity) => (
-            <div
+            <button
               key={activity._id}
-              className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm"
+              type="button"
+              onClick={() =>
+                navigate(
+                  `/teacher/scores?classId=${selectedClassId}&periodId=${selectedPeriodId}&activityId=${activity._id}`
+                )
+              }
+              className="group w-full rounded-xl border border-gray-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-200"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -418,8 +431,18 @@ function TeacherActivities() {
                   </h2>
 
                   <p className="mt-1 text-sm capitalize text-blue-600">
-                    {activity.type}
+                    {String(activity.type || "activity").replace("_", " ")}
                   </p>
+
+                  {activity.gradingCategory && (
+                    <span className="mt-2 inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
+                      {activity.gradingCategory === "written_work"
+                        ? "Written Work"
+                        : activity.gradingCategory === "performance_task"
+                          ? "Performance Tasks"
+                          : "Assessment"}
+                    </span>
+                  )}
                 </div>
 
                 <ClipboardList
@@ -473,7 +496,12 @@ function TeacherActivities() {
                     : "Active"}
                 </span>
               </div>
-            </div>
+
+              <div className="mt-5 flex items-center justify-end gap-2 border-t pt-4 text-sm font-medium text-blue-600">
+                Enter Scores
+                <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
+              </div>
+            </button>
           ))}
         </div>
       )}
@@ -550,21 +578,12 @@ function TeacherActivities() {
                     onChange={handleChange}
                     className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5"
                   >
-                    <option value="activity">
-                      Activity
-                    </option>
-                    <option value="assignment">
-                      Assignment
-                    </option>
-                    <option value="quiz">
-                      Quiz
-                    </option>
-                    <option value="project">
-                      Project
-                    </option>
-                    <option value="exam">
-                      Exam
-                    </option>
+                    <option value="activity">Activity</option>
+                    <option value="assignment">Assignment</option>
+                    <option value="quiz">Quiz</option>
+                    <option value="project">Project</option>
+                    <option value="performance_task">Performance Task</option>
+                    <option value="exam">Exam</option>
                   </select>
                 </div>
 
@@ -584,6 +603,23 @@ function TeacherActivities() {
                     className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Grading Category
+                </label>
+
+                <select
+                  name="gradingCategory"
+                  value={formData.gradingCategory}
+                  onChange={handleChange}
+                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5"
+                >
+                  <option value="written_work">Written Work</option>
+                  <option value="performance_task">Performance Tasks</option>
+                  <option value="assessment">Assessment</option>
+                </select>
               </div>
 
               <div>

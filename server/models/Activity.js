@@ -33,9 +33,20 @@ const activitySchema = new mongoose.Schema(
         "assignment",
         "exam",
         "project",
+        "performance_task",
         "activity",
       ],
       default: "activity",
+    },
+
+    gradingCategory: {
+      type: String,
+      enum: [
+        "written_work",
+        "performance_task",
+        "assessment",
+      ],
+      required: true,
     },
 
     totalPoints: {

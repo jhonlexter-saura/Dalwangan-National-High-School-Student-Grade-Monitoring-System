@@ -37,6 +37,40 @@ const classSchema = new mongoose.Schema(
         ref: "Student",
       },
     ],
+
+    gradingSystem: {
+      enabled: {
+        type: Boolean,
+        default: false,
+      },
+
+      components: [
+        {
+          key: {
+            type: String,
+            enum: [
+              "written_work",
+              "performance_task",
+              "assessment",
+            ],
+            required: true,
+          },
+
+          name: {
+            type: String,
+            required: true,
+            trim: true,
+          },
+
+          percentage: {
+            type: Number,
+            min: 0,
+            max: 100,
+            required: true,
+          },
+        },
+      ],
+    },
   },
   {
     timestamps: true,
