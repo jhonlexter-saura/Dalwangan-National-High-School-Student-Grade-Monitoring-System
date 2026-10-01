@@ -44,7 +44,6 @@ export default function TeacherScores() {
 
   const [saving, setSaving] = useState(false);
 
-
   /*
    * Load teacher's classes
    */
@@ -247,8 +246,6 @@ export default function TeacherScores() {
         score: value,
       },
     }));
-
-
   };
 
   /*
