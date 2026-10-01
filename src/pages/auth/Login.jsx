@@ -48,9 +48,15 @@ function Login() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-100 px-4">
-      <div className="w-full max-w-md rounded-xl border-t-4 border-yellow-400 bg-white p-8 shadow-sm">
+    <div
+      className="relative flex min-h-screen items-center justify-center bg-cover bg-center bg-no-repeat px-4"
+      style={{ backgroundImage: "url(/background.svg)" }}
+    >
+      {/* Optional dark overlay for visual clarity */}
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" />
 
+      {/* Login Card */}
+      <div className="relative z-10 w-full max-w-md rounded-xl border-t-4 border-yellow-400 bg-white/95 p-8 shadow-xl backdrop-blur-sm">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-blue-700">
             DNHS-SGMS
