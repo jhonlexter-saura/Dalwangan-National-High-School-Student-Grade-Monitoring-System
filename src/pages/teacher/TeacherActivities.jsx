@@ -507,10 +507,27 @@ function TeacherActivities() {
       )}
 
       {/* Create Activity Modal */}
+      {/* Create Activity Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-lg rounded-xl bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6"
+          onMouseDown={(e) => {
+            // Prevent accidental closing when clicking
+            // the background.
+            if (e.target === e.currentTarget) {
+              e.stopPropagation();
+            }
+          }}
+        >
+          {/* Fixed-height modal */}
+          <div className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+
+            {/* ==========================================
+                MODAL HEADER - ALWAYS VISIBLE
+            ========================================== */}
+
+            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-6 py-4">
+
               <div>
                 <h2 className="text-lg font-semibold text-gray-900">
                   Create Activity
@@ -523,158 +540,233 @@ function TeacherActivities() {
 
               <button
                 type="button"
-                onClick={() =>
-                  setShowCreateModal(false)
-                }
-                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                onClick={() => setShowCreateModal(false)}
+                className="shrink-0 rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
+                aria-label="Close modal"
               >
                 <X size={20} />
               </button>
+
             </div>
+
+            {/* ==========================================
+                FORM
+            ========================================== */}
 
             <form
               onSubmit={handleCreateActivity}
-              className="space-y-5 p-6"
+              className="flex min-h-0 flex-1 flex-col"
             >
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Activity Title
-                </label>
 
-                <input
-                  name="title"
-                  value={formData.title}
-                  onChange={handleChange}
-                  placeholder="e.g. Quiz 1"
-                  required
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
-              </div>
+              {/* ========================================
+                  SCROLLABLE FORM BODY
+              ======================================== */}
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Description
-                </label>
+              <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
 
-                <textarea
-                  name="description"
-                  value={formData.description}
-                  onChange={handleChange}
-                  rows="3"
-                  placeholder="Optional description"
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Type
-                  </label>
-
-                  <select
-                    name="type"
-                    value={formData.type}
-                    onChange={handleChange}
-                    className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5"
-                  >
-                    <option value="activity">Activity</option>
-                    <option value="assignment">Assignment</option>
-                    <option value="quiz">Quiz</option>
-                    <option value="project">Project</option>
-                    <option value="performance_task">Performance Task</option>
-                    <option value="exam">Exam</option>
-                  </select>
-                </div>
+                {/* Activity Title */}
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
-                    Total Points
+                    Activity Title
                   </label>
 
                   <input
-                    name="totalPoints"
-                    type="number"
-                    min="1"
-                    value={formData.totalPoints}
+                    name="title"
+                    value={formData.title}
                     onChange={handleChange}
-                    placeholder="20"
+                    placeholder="e.g. Quiz 1"
                     required
-                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5"
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                   />
                 </div>
+
+                {/* Description */}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Description
+                  </label>
+
+                  <textarea
+                    name="description"
+                    value={formData.description}
+                    onChange={handleChange}
+                    rows={3}
+                    placeholder="Optional description"
+                    className="mt-1 w-full resize-none rounded-lg border border-gray-300 px-3 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                </div>
+
+                {/* Activity Type + Total Points */}
+
+                <div className="grid gap-4 sm:grid-cols-2">
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Activity Type
+                    </label>
+
+                    <select
+                      name="type"
+                      value={formData.type}
+                      onChange={handleChange}
+                      className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    >
+                      <option value="activity">
+                        Activity
+                      </option>
+
+                      <option value="assignment">
+                        Assignment
+                      </option>
+
+                      <option value="quiz">
+                        Quiz
+                      </option>
+
+                      <option value="project">
+                        Project
+                      </option>
+
+                      <option value="performance_task">
+                        Performance Task
+                      </option>
+
+                      <option value="exam">
+                        Exam
+                      </option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Total Points
+                    </label>
+
+                    <input
+                      name="totalPoints"
+                      type="number"
+                      min="1"
+                      value={formData.totalPoints}
+                      onChange={handleChange}
+                      placeholder="20"
+                      required
+                      className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    />
+                  </div>
+
+                </div>
+
+                {/* Grading Category */}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Grading Category
+                  </label>
+
+                  <select
+                    name="gradingCategory"
+                    value={formData.gradingCategory}
+                    onChange={handleChange}
+                    className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  >
+                    <option value="written_work">
+                      Written Work
+                    </option>
+
+                    <option value="performance_task">
+                      Performance Tasks
+                    </option>
+
+                    <option value="assessment">
+                      Assessment
+                    </option>
+                  </select>
+                </div>
+
+                {/* Date */}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Activity Date
+                  </label>
+
+                  <input
+                    name="date"
+                    type="date"
+                    value={formData.date}
+                    onChange={handleChange}
+                    required
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                </div>
+
+                {/* Class / Trimester Summary */}
+
+                <div className="rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-600">
+
+                  <p>
+                    <span className="font-medium text-gray-700">
+                      Class:
+                    </span>{" "}
+                    {selectedClass
+                      ? `${selectedClass.name} — ${selectedClass.section}`
+                      : "—"}
+                  </p>
+
+                  <p className="mt-1">
+                    <span className="font-medium text-gray-700">
+                      Trimester:
+                    </span>{" "}
+                    {periods.find(
+                      (period) =>
+                        period._id === selectedPeriodId
+                    )?.name || "—"}
+                  </p>
+
+                  <p className="mt-1">
+                    <span className="font-medium text-gray-700">
+                      Category:
+                    </span>{" "}
+                    {formData.gradingCategory ===
+                    "written_work"
+                      ? "Written Work"
+                      : formData.gradingCategory ===
+                        "performance_task"
+                        ? "Performance Tasks"
+                        : "Assessment"}
+                  </p>
+
+                </div>
+
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Grading Category
-                </label>
+              {/* ========================================
+                  MODAL FOOTER - ALWAYS VISIBLE
+              ======================================== */}
 
-                <select
-                  name="gradingCategory"
-                  value={formData.gradingCategory}
-                  onChange={handleChange}
-                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5"
-                >
-                  <option value="written_work">Written Work</option>
-                  <option value="performance_task">Performance Tasks</option>
-                  <option value="assessment">Assessment</option>
-                </select>
-              </div>
+              <div className="flex shrink-0 justify-end gap-3 border-t border-gray-200 bg-white px-6 py-4">
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Date
-                </label>
-
-                <input
-                  name="date"
-                  type="date"
-                  value={formData.date}
-                  onChange={handleChange}
-                  required
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5"
-                />
-              </div>
-
-              <div className="rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-600">
-                <p>
-                  <span className="font-medium">
-                    Class:
-                  </span>{" "}
-                  {selectedClass?.name || "—"}
-                </p>
-
-                <p className="mt-1">
-                  <span className="font-medium">
-                    Trimester:
-                  </span>{" "}
-                  {periods.find(
-                    (period) =>
-                      period._id === selectedPeriodId
-                  )?.name || "—"}
-                </p>
-              </div>
-
-              <div className="flex justify-end gap-3">
                 <button
                   type="button"
-                  onClick={() =>
-                    setShowCreateModal(false)
-                  }
-                  className="rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  onClick={() => setShowCreateModal(false)}
+                  className="rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
                 >
                   Cancel
                 </button>
 
                 <button
                   type="submit"
-                  className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
+                  className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700"
                 >
                   Create Activity
                 </button>
+
               </div>
+
             </form>
+
           </div>
         </div>
       )}

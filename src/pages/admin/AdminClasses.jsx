@@ -1,7 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useSchoolData } from "../../context/SchoolDataContext";
-
 import {
   Plus,
   Users,
@@ -10,60 +8,167 @@ import {
   ChevronRight,
 } from "lucide-react";
 
+import { useToast } from "../../context/ToastContext";
+
+import {
+  getClasses,
+  createClass,
+  getTeachers,
+  addStudentToClass,
+} from "../../services/schoolDataService";
+
 function AdminClasses() {
   const navigate = useNavigate();
+  const { showToast } = useToast();
 
-  const {
-    classes,
-    createClass,
-    inviteStudent,
-  } = useSchoolData();
+  const [classes, setClasses] = useState([]);
+  const [teachers, setTeachers] = useState([]);
 
+  const [loading, setLoading] = useState(true);
+  const [loadingTeachers, setLoadingTeachers] = useState(false);
+
+  // Modals
   const [showClassModal, setShowClassModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
 
+  // Selected class
   const [selectedClassId, setSelectedClassId] = useState(null);
 
   const [isCreatingClass, setIsCreatingClass] = useState(false);
   const [isInvitingStudent, setIsInvitingStudent] = useState(false);
 
-  const [classForm, setClassForm] = useState({
+  // --------------------------------------------------
+  // DEFAULT FORMS
+  // --------------------------------------------------
+
+  const defaultClassForm = {
     name: "",
     section: "",
     gradeLevel: "",
-    adviser: "",
+    teacher: "",
     schoolYear: "2026-2027",
-  });
 
-  const [studentForm, setStudentForm] = useState({
+    gradingSystemEnabled: false,
+    writtenWorkPercentage: "30",
+    performanceTaskPercentage: "50",
+    assessmentPercentage: "20",
+  };
+
+  const defaultStudentForm = {
     studentId: "",
     name: "",
     email: "",
-  });
+  };
+
+  const [classForm, setClassForm] = useState(
+    defaultClassForm
+  );
+
+  const [studentForm, setStudentForm] = useState(
+    defaultStudentForm
+  );
+
+  // --------------------------------------------------
+  // LOAD CLASSES
+  // --------------------------------------------------
+
+  const loadClasses = async () => {
+    try {
+      setLoading(true);
+
+      const data = await getClasses();
+
+      setClasses(data);
+    } catch (error) {
+      console.error("Failed to load classes:", error);
+
+      showToast(
+        error.message || "Failed to load classes.",
+        "error"
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --------------------------------------------------
+  // LOAD TEACHERS
+  // --------------------------------------------------
+
+  const loadTeachers = async () => {
+    try {
+      setLoadingTeachers(true);
+
+      const data = await getTeachers();
+
+      setTeachers(data);
+    } catch (error) {
+      console.error("Failed to load teachers:", error);
+
+      showToast(
+        error.message || "Failed to load teachers.",
+        "error"
+      );
+    } finally {
+      setLoadingTeachers(false);
+    }
+  };
+
+  useEffect(() => {
+    loadClasses();
+    loadTeachers();
+  }, []);
+
+  // --------------------------------------------------
+  // CREATE CLASS MODAL
+  // --------------------------------------------------
 
   const openCreateClassModal = () => {
     setClassForm({
-      name: "",
-      section: "",
-      gradeLevel: "",
-      adviser: "",
-      schoolYear: "2026-2027",
+      ...defaultClassForm,
     });
 
     setShowClassModal(true);
   };
 
+  const closeCreateClassModal = () => {
+    if (isCreatingClass) return;
+
+    setShowClassModal(false);
+
+    setClassForm({
+      ...defaultClassForm,
+    });
+  };
+
+  // --------------------------------------------------
+  // INVITE STUDENT MODAL
+  // --------------------------------------------------
+
   const openInviteModal = (classId) => {
     setSelectedClassId(classId);
 
     setStudentForm({
-      studentId: "",
-      name: "",
-      email: "",
+      ...defaultStudentForm,
     });
 
     setShowInviteModal(true);
   };
+
+  const closeInviteModal = () => {
+    if (isInvitingStudent) return;
+
+    setShowInviteModal(false);
+    setSelectedClassId(null);
+
+    setStudentForm({
+      ...defaultStudentForm,
+    });
+  };
+
+  // --------------------------------------------------
+  // FORM HANDLERS
+  // --------------------------------------------------
 
   const handleClassChange = (e) => {
     const { name, value } = e.target;
@@ -83,296 +188,526 @@ function AdminClasses() {
     }));
   };
 
+  // --------------------------------------------------
+  // CREATE CLASS
+  // --------------------------------------------------
+
   const handleCreateClass = async (e) => {
     e.preventDefault();
 
+    if (isCreatingClass) return;
+
     if (
-      !classForm.name ||
-      !classForm.section ||
+      !classForm.name.trim() ||
+      !classForm.section.trim() ||
       !classForm.gradeLevel ||
-      !classForm.adviser ||
+      !classForm.teacher ||
       !classForm.schoolYear
     ) {
+      showToast(
+        "Please complete all required class fields.",
+        "warning"
+      );
+
       return;
     }
-
-    if (isCreatingClass) return;
 
     try {
       setIsCreatingClass(true);
 
-      await createClass({
-        name: classForm.name,
-        section: classForm.section,
+      const percentages = [
+        Number(classForm.writtenWorkPercentage),
+        Number(classForm.performanceTaskPercentage),
+        Number(classForm.assessmentPercentage),
+      ];
+
+      // Validate percentages
+      if (
+        classForm.gradingSystemEnabled &&
+        percentages.some(
+          (value) =>
+            Number.isNaN(value) ||
+            value < 0 ||
+            value > 100
+        )
+      ) {
+        showToast(
+          "Each grading percentage must be between 0 and 100.",
+          "warning"
+        );
+
+        return;
+      }
+
+      // Validate total
+      if (
+        classForm.gradingSystemEnabled &&
+        percentages.reduce(
+          (sum, value) => sum + value,
+          0
+        ) !== 100
+      ) {
+        showToast(
+          "Grading percentages must total 100%.",
+          "warning"
+        );
+
+        return;
+      }
+
+      const gradingSystem = {
+        enabled: classForm.gradingSystemEnabled,
+
+        components: classForm.gradingSystemEnabled
+          ? [
+              {
+                key: "written_work",
+                name: "Written Work",
+                percentage: percentages[0],
+              },
+              {
+                key: "performance_task",
+                name: "Performance Tasks",
+                percentage: percentages[1],
+              },
+              {
+                key: "assessment",
+                name: "Assessment",
+                percentage: percentages[2],
+              },
+            ]
+          : [],
+      };
+
+      const createdClass = await createClass({
+        name: classForm.name.trim(),
+        section: classForm.section.trim(),
         gradeLevel: Number(classForm.gradeLevel),
-        adviser: classForm.adviser,
+
+        // Current Class model uses teacher ObjectId
+        teacher: classForm.teacher,
+
         schoolYear: classForm.schoolYear,
+
+        gradingSystem,
       });
+
+      setClasses((prev) => [
+        createdClass,
+        ...prev,
+      ]);
 
       setShowClassModal(false);
 
       setClassForm({
-        name: "",
-        section: "",
-        gradeLevel: "",
-        adviser: "",
-        schoolYear: "2026-2027",
+        ...defaultClassForm,
       });
+
+      showToast(
+        "Class created successfully.",
+        "success"
+      );
     } catch (error) {
-      alert(error.message);
+      console.error("Failed to create class:", error);
+
+      showToast(
+        error.message || "Failed to create class.",
+        "error"
+      );
     } finally {
       setIsCreatingClass(false);
     }
   };
 
+  // --------------------------------------------------
+  // INVITE STUDENT
+  // --------------------------------------------------
+
   const handleInviteStudent = async (e) => {
     e.preventDefault();
 
+    if (isInvitingStudent) return;
+
     if (
       !selectedClassId ||
-      !studentForm.studentId ||
-      !studentForm.name ||
-      !studentForm.email
+      !studentForm.studentId.trim() ||
+      !studentForm.name.trim() ||
+      !studentForm.email.trim()
     ) {
+      showToast(
+        "Please complete all student fields.",
+        "warning"
+      );
+
       return;
     }
-
-    if (isInvitingStudent) return;
 
     const selectedClass = classes.find(
       (classItem) =>
-        String(classItem.id) === String(selectedClassId)
+        String(classItem._id || classItem.id) ===
+        String(selectedClassId)
     );
 
     if (!selectedClass) {
-      alert("Selected class was not found.");
+      showToast(
+        "Selected class was not found.",
+        "error"
+      );
+
       return;
     }
 
-    const duplicateEmail = selectedClass.students?.some(
-      (student) =>
-        student.email?.toLowerCase() ===
-        studentForm.email.toLowerCase()
-    );
+    // Prevent duplicate email
+    const duplicateEmail =
+      selectedClass.students?.some(
+        (student) =>
+          student.email?.toLowerCase() ===
+          studentForm.email.toLowerCase()
+      );
 
     if (duplicateEmail) {
-      alert("This student is already in the selected class.");
+      showToast(
+        "This student is already in the selected class.",
+        "warning"
+      );
+
       return;
     }
 
     try {
       setIsInvitingStudent(true);
 
-      await inviteStudent(selectedClassId, {
-        studentId: studentForm.studentId,
-        name: studentForm.name,
-        email: studentForm.email,
-        gradeLevel: selectedClass.gradeLevel,
-        section: selectedClass.section,
-        schoolYear: selectedClass.schoolYear,
-      });
+      await addStudentToClass(
+        studentForm.studentId,
+        selectedClassId
+      );
+
+      // Refresh classes from MongoDB
+      await loadClasses();
 
       setShowInviteModal(false);
+      setSelectedClassId(null);
 
       setStudentForm({
-        studentId: "",
-        name: "",
-        email: "",
+        ...defaultStudentForm,
       });
+
+      showToast(
+        "Student added to the class successfully.",
+        "success"
+      );
     } catch (error) {
-      alert(error.message);
+      console.error(
+        "Failed to invite student:",
+        error
+      );
+
+      showToast(
+        error.message || "Failed to invite student.",
+        "error"
+      );
     } finally {
       setIsInvitingStudent(false);
     }
   };
 
+  // --------------------------------------------------
+  // RENDER
+  // --------------------------------------------------
+
   return (
-    <div>
-      {/* PAGE HEADER */}
+    <div className="space-y-6">
+
+      {/* ==================================================
+          PAGE HEADER
+      ================================================== */}
+
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+
         <div>
           <h1 className="text-2xl font-bold text-gray-800">
             Classes
           </h1>
 
           <p className="mt-1 text-sm text-gray-500">
-            Manage classes and their students.
+            Manage classes, teachers, and students.
           </p>
         </div>
 
         <button
           type="button"
           onClick={openCreateClassModal}
-          className="flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700"
         >
           <Plus size={18} />
           Create Class
         </button>
+
       </div>
 
-      {/* CLASS CARDS */}
-      <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-        {classes.length > 0 ? (
-          classes.map((classItem) => (
-            <div
-              key={classItem.id}
-              className="group rounded-lg border bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md"
-            >
-              {/* CLICKABLE CLASS AREA */}
-              <button
-                type="button"
-                onClick={() =>
-                  navigate(
-                    `/admin/activities?classId=${classItem.id}`
-                  )
-                }
-                className="block w-full cursor-pointer text-left focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+      {/* ==================================================
+          CLASS CARDS
+      ================================================== */}
+
+      {loading ? (
+        <div className="rounded-xl border bg-white p-8 text-center text-sm text-gray-500">
+          Loading classes...
+        </div>
+      ) : classes.length === 0 ? (
+        <div className="rounded-xl border border-dashed bg-white p-10 text-center">
+
+          <Users
+            size={40}
+            className="mx-auto text-gray-400"
+          />
+
+          <h2 className="mt-4 font-semibold text-gray-700">
+            No classes available
+          </h2>
+
+          <p className="mt-1 text-sm text-gray-500">
+            Create a class to get started.
+          </p>
+
+          <button
+            type="button"
+            onClick={openCreateClassModal}
+            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          >
+            <Plus size={17} />
+            Create Class
+          </button>
+
+        </div>
+      ) : (
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+
+          {classes.map((classItem) => {
+
+            const classId =
+              classItem._id || classItem.id;
+
+            const teacherName =
+              classItem.teacher?.name ||
+              classItem.adviser ||
+              "No teacher assigned";
+
+            return (
+              <div
+                key={classId}
+                className="group rounded-xl border bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md"
               >
-                <div className="flex items-start justify-between">
-                  <div className="min-w-0">
-                    <h2 className="truncate font-semibold text-gray-800 group-hover:text-blue-600">
-                      {classItem.name}
-                    </h2>
 
-                    <p className="mt-1 text-sm text-gray-500">
-                      {classItem.schoolYear}
-                    </p>
-                  </div>
+                {/* CLICKABLE CLASS CONTENT */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigate(
+                      `/admin/activities?classId=${classId}`
+                    )
+                  }
+                  className="block w-full text-left focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                >
 
-                  <div className="ml-3 flex shrink-0 items-center gap-2">
-                    <div className="rounded-md bg-blue-50 p-2 text-blue-600">
-                      <Users size={20} />
+                  <div className="flex items-start justify-between">
+
+                    <div className="min-w-0">
+
+                      <h2 className="truncate font-semibold text-gray-800 group-hover:text-blue-600">
+                        {classItem.name}
+                      </h2>
+
+                      <p className="mt-1 text-sm text-gray-500">
+                        Section {classItem.section}
+                      </p>
+
                     </div>
 
-                    <ChevronRight
-                      size={18}
-                      className="text-gray-300 transition group-hover:translate-x-0.5 group-hover:text-blue-500"
-                    />
-                  </div>
-                </div>
+                    <div className="ml-3 flex shrink-0 items-center gap-2">
 
-                <div className="mt-5 border-t pt-4">
-                  <p className="text-sm text-gray-500">
-                    Adviser
-                  </p>
-
-                  <p className="mt-1 text-sm font-medium text-gray-800">
-                    {classItem.adviser}
-                  </p>
-                </div>
-
-                <div className="mt-4 flex items-center gap-2 text-sm text-gray-500">
-                  <Users size={16} />
-
-                  <span>
-                    {classItem.students?.length || 0}{" "}
-                    {(classItem.students?.length || 0) === 1
-                      ? "student"
-                      : "students"}
-                  </span>
-                </div>
-              </button>
-
-              {/* INVITE STUDENT */}
-              <button
-                type="button"
-                onClick={() => openInviteModal(classItem.id)}
-                className="mt-5 flex w-full items-center justify-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-600 transition hover:bg-blue-100"
-              >
-                <UserPlus size={17} />
-                Invite Student
-              </button>
-
-              {/* STUDENTS */}
-              {classItem.students?.length > 0 && (
-                <div className="mt-5 border-t pt-4">
-                  <p className="mb-3 text-sm font-semibold text-gray-700">
-                    Students
-                  </p>
-
-                  <div className="space-y-3">
-                    {classItem.students.map((student) => (
-                      <div
-                        key={student.id}
-                        className="flex items-center gap-3"
-                      >
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-600">
-                          {student.name
-                            ?.charAt(0)
-                            .toUpperCase()}
-                        </div>
-
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-gray-800">
-                            {student.name}
-                          </p>
-
-                          <p className="truncate text-xs text-gray-500">
-                            {student.email}
-                          </p>
-                        </div>
+                      <div className="rounded-md bg-blue-50 p-2 text-blue-600">
+                        <Users size={20} />
                       </div>
-                    ))}
+
+                      <ChevronRight
+                        size={18}
+                        className="text-gray-300 transition group-hover:translate-x-0.5 group-hover:text-blue-500"
+                      />
+
+                    </div>
+
                   </div>
-                </div>
-              )}
-            </div>
-          ))
-        ) : (
-          <div className="col-span-full rounded-lg border bg-white p-10 text-center shadow-sm">
-            <Users
-              size={40}
-              className="mx-auto text-gray-400"
-            />
 
-            <h2 className="mt-4 font-semibold text-gray-700">
-              No classes available
-            </h2>
+                  <div className="mt-5 border-t pt-4">
 
-            <p className="mt-1 text-sm text-gray-500">
-              Create a class to get started.
-            </p>
+                    <p className="text-sm text-gray-500">
+                      Teacher
+                    </p>
 
-            <button
-              type="button"
-              onClick={openCreateClassModal}
-              className="mt-4 inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-            >
-              <Plus size={17} />
-              Create Class
-            </button>
-          </div>
-        )}
-      </div>
+                    <p className="mt-1 text-sm font-medium text-gray-800">
+                      {teacherName}
+                    </p>
 
-      {/* CREATE CLASS MODAL */}
+                  </div>
+
+                  <div className="mt-4 flex items-center gap-2 text-sm text-gray-500">
+
+                    <Users size={16} />
+
+                    <span>
+                      {classItem.students?.length || 0}{" "}
+                      {(classItem.students?.length || 0) === 1
+                        ? "student"
+                        : "students"}
+                    </span>
+
+                  </div>
+
+                  <div className="mt-2 text-sm text-gray-500">
+                    Grade {classItem.gradeLevel}
+                  </div>
+
+                  <div className="mt-1 text-sm text-gray-500">
+                    School Year {classItem.schoolYear}
+                  </div>
+
+                  {classItem.gradingSystem?.enabled && (
+                    <div className="mt-4 rounded-lg bg-gray-50 px-3 py-2">
+
+                      <p className="text-xs font-semibold text-gray-700">
+                        Automatic Grading
+                      </p>
+
+                      <div className="mt-1 space-y-0.5 text-xs text-gray-500">
+
+                        {classItem.gradingSystem.components?.map(
+                          (component) => (
+                            <div key={component.key}>
+                              {component.name}:{" "}
+                              {component.percentage}%
+                            </div>
+                          )
+                        )}
+
+                      </div>
+
+                    </div>
+                  )}
+
+                </button>
+
+                {/* INVITE */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    openInviteModal(classId)
+                  }
+                  className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-600 transition hover:bg-blue-100"
+                >
+                  <UserPlus size={17} />
+                  Invite Student
+                </button>
+
+                {/* STUDENTS */}
+                {classItem.students?.length > 0 && (
+                  <div className="mt-5 border-t pt-4">
+
+                    <p className="mb-3 text-sm font-semibold text-gray-700">
+                      Students
+                    </p>
+
+                    <div className="space-y-3">
+
+                      {classItem.students.map(
+                        (student) => (
+                          <div
+                            key={
+                              student._id ||
+                              student.id
+                            }
+                            className="flex items-center gap-3"
+                          >
+
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-600">
+                              {student.name
+                                ?.charAt(0)
+                                .toUpperCase()}
+                            </div>
+
+                            <div className="min-w-0">
+
+                              <p className="truncate text-sm font-medium text-gray-800">
+                                {student.name}
+                              </p>
+
+                              <p className="truncate text-xs text-gray-500">
+                                {student.email}
+                              </p>
+
+                            </div>
+
+                          </div>
+                        )
+                      )}
+
+                    </div>
+
+                  </div>
+                )}
+
+              </div>
+            );
+          })}
+
+        </div>
+      )}
+
+      {/* ==================================================
+          CREATE CLASS MODAL
+      ================================================== */}
+
       {showClassModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-md rounded-xl bg-white shadow-lg">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              closeCreateClassModal();
+            }
+          }}
+        >
+
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white shadow-xl">
+
+            {/* HEADER */}
             <div className="flex items-center justify-between border-b px-6 py-4">
+
               <div>
                 <h2 className="text-lg font-semibold text-gray-800">
                   Create Class
                 </h2>
 
                 <p className="text-sm text-gray-500">
-                  Add a new class.
+                  Add a new class and configure its grading system.
                 </p>
               </div>
 
               <button
                 type="button"
-                onClick={() => setShowClassModal(false)}
+                onClick={closeCreateClassModal}
                 className="rounded-md p-2 text-gray-500 hover:bg-gray-100"
               >
                 <X size={20} />
               </button>
+
             </div>
 
+            {/* FORM */}
             <form
               onSubmit={handleCreateClass}
-              className="space-y-4 p-6"
+              className="space-y-5 p-6"
             >
+
+              {/* CLASS NAME */}
               <div>
                 <label className="block text-sm font-medium text-gray-700">
                   Class Name
@@ -382,12 +717,15 @@ function AdminClasses() {
                   name="name"
                   value={classForm.name}
                   onChange={handleClassChange}
-                  placeholder="e.g. Grade 10 - ICT A"
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  placeholder="e.g. Grade 10 - ICT"
+                  required
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              {/* GRADE + SECTION */}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
                     Grade Level
@@ -397,10 +735,11 @@ function AdminClasses() {
                     name="gradeLevel"
                     value={classForm.gradeLevel}
                     onChange={handleClassChange}
-                    className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
+                    required
+                    className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 outline-none focus:border-blue-500"
                   >
                     <option value="">
-                      Select
+                      Select grade
                     </option>
 
                     <option value="7">Grade 7</option>
@@ -421,45 +760,203 @@ function AdminClasses() {
                     name="section"
                     value={classForm.section}
                     onChange={handleClassChange}
-                    placeholder="ICT A"
-                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                    placeholder="e.g. Rizal"
+                    required
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5 outline-none focus:border-blue-500"
                   />
                 </div>
+
               </div>
 
+              {/* TEACHER */}
               <div>
+
                 <label className="block text-sm font-medium text-gray-700">
-                  Adviser
+                  Teacher / Adviser
                 </label>
 
-                <input
-                  name="adviser"
-                  value={classForm.adviser}
+                <select
+                  name="teacher"
+                  value={classForm.teacher}
                   onChange={handleClassChange}
-                  placeholder="Teacher name"
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
-                />
+                  required
+                  disabled={loadingTeachers}
+                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 outline-none focus:border-blue-500 disabled:bg-gray-100"
+                >
+
+                  <option value="">
+                    {loadingTeachers
+                      ? "Loading teachers..."
+                      : "Select teacher"}
+                  </option>
+
+                  {teachers.map((teacher) => (
+                    <option
+                      key={teacher._id || teacher.id}
+                      value={teacher._id || teacher.id}
+                    >
+                      {teacher.name}
+                    </option>
+                  ))}
+
+                </select>
+
               </div>
 
+              {/* SCHOOL YEAR */}
               <div>
+
                 <label className="block text-sm font-medium text-gray-700">
                   School Year
                 </label>
 
-                <input
+                <select
                   name="schoolYear"
                   value={classForm.schoolYear}
                   onChange={handleClassChange}
-                  placeholder="2026-2027"
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
-                />
+                  required
+                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 outline-none focus:border-blue-500"
+                >
+                  <option value="2026-2027">
+                    2026-2027
+                  </option>
+
+                  <option value="2027-2028">
+                    2027-2028
+                  </option>
+                </select>
+
               </div>
 
+              {/* GRADING SYSTEM */}
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+
+                <div className="flex items-start justify-between gap-4">
+
+                  <div>
+                    <h3 className="font-semibold text-gray-900">
+                      Grading System
+                    </h3>
+
+                    <p className="mt-1 text-sm text-gray-500">
+                      Automatically compute grades from activity scores.
+                    </p>
+                  </div>
+
+                  <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-700">
+
+                    <input
+                      type="checkbox"
+                      name="gradingSystemEnabled"
+                      checked={
+                        classForm.gradingSystemEnabled
+                      }
+                      onChange={(e) =>
+                        setClassForm((prev) => ({
+                          ...prev,
+                          gradingSystemEnabled:
+                            e.target.checked,
+                        }))
+                      }
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+
+                    Automatic
+
+                  </label>
+
+                </div>
+
+                {classForm.gradingSystemEnabled && (
+                  <>
+
+                    <div className="mt-4 grid gap-4 sm:grid-cols-3">
+
+                      {[
+                        [
+                          "writtenWorkPercentage",
+                          "Written Work",
+                        ],
+                        [
+                          "performanceTaskPercentage",
+                          "Performance Tasks",
+                        ],
+                        [
+                          "assessmentPercentage",
+                          "Assessment",
+                        ],
+                      ].map(([name, label]) => (
+                        <div key={name}>
+
+                          <label className="block text-sm font-medium text-gray-700">
+                            {label}
+                          </label>
+
+                          <div className="relative mt-1">
+
+                            <input
+                              name={name}
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={classForm[name]}
+                              onChange={handleClassChange}
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 pr-9 outline-none focus:border-blue-500"
+                            />
+
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
+                              %
+                            </span>
+
+                          </div>
+
+                        </div>
+                      ))}
+
+                    </div>
+
+                    <p
+                      className={`mt-3 text-sm ${
+                        Number(
+                          classForm.writtenWorkPercentage
+                        ) +
+                          Number(
+                            classForm.performanceTaskPercentage
+                          ) +
+                          Number(
+                            classForm.assessmentPercentage
+                          ) === 100
+                          ? "text-green-600"
+                          : "text-red-600"
+                      }`}
+                    >
+                      Total:{" "}
+                      {Number(
+                        classForm.writtenWorkPercentage || 0
+                      ) +
+                        Number(
+                          classForm.performanceTaskPercentage ||
+                            0
+                        ) +
+                        Number(
+                          classForm.assessmentPercentage || 0
+                        )}
+                      %
+                    </p>
+
+                  </>
+                )}
+
+              </div>
+
+              {/* ACTIONS */}
               <div className="flex justify-end gap-3 border-t pt-5">
+
                 <button
                   type="button"
-                  onClick={() => setShowClassModal(false)}
-                  className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  onClick={closeCreateClassModal}
+                  disabled={isCreatingClass}
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -467,23 +964,41 @@ function AdminClasses() {
                 <button
                   type="submit"
                   disabled={isCreatingClass}
-                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {isCreatingClass
                     ? "Creating..."
                     : "Create Class"}
                 </button>
+
               </div>
+
             </form>
+
           </div>
+
         </div>
       )}
 
-      {/* INVITE STUDENT MODAL */}
+      {/* ==================================================
+          INVITE STUDENT MODAL
+      ================================================== */}
+
       {showInviteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-md rounded-xl bg-white shadow-lg">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              closeInviteModal();
+            }
+          }}
+        >
+
+          <div className="w-full max-w-md rounded-xl bg-white shadow-xl">
+
+            {/* HEADER */}
             <div className="flex items-center justify-between border-b px-6 py-4">
+
               <div>
                 <h2 className="text-lg font-semibold text-gray-800">
                   Invite Student
@@ -496,18 +1011,22 @@ function AdminClasses() {
 
               <button
                 type="button"
-                onClick={() => setShowInviteModal(false)}
+                onClick={closeInviteModal}
                 className="rounded-md p-2 text-gray-500 hover:bg-gray-100"
               >
                 <X size={20} />
               </button>
+
             </div>
 
+            {/* FORM */}
             <form
               onSubmit={handleInviteStudent}
               className="space-y-4 p-6"
             >
+
               <div>
+
                 <label className="block text-sm font-medium text-gray-700">
                   Student ID
                 </label>
@@ -517,11 +1036,14 @@ function AdminClasses() {
                   value={studentForm.studentId}
                   onChange={handleStudentChange}
                   placeholder="e.g. 2026-0001"
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  required
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5 outline-none focus:border-blue-500"
                 />
+
               </div>
 
               <div>
+
                 <label className="block text-sm font-medium text-gray-700">
                   Student Name
                 </label>
@@ -531,11 +1053,14 @@ function AdminClasses() {
                   value={studentForm.name}
                   onChange={handleStudentChange}
                   placeholder="Juan Dela Cruz"
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  required
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5 outline-none focus:border-blue-500"
                 />
+
               </div>
 
               <div>
+
                 <label className="block text-sm font-medium text-gray-700">
                   Email
                 </label>
@@ -546,15 +1071,20 @@ function AdminClasses() {
                   value={studentForm.email}
                   onChange={handleStudentChange}
                   placeholder="student@example.com"
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  required
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5 outline-none focus:border-blue-500"
                 />
+
               </div>
 
+              {/* ACTIONS */}
               <div className="flex justify-end gap-3 border-t pt-5">
+
                 <button
                   type="button"
-                  onClick={() => setShowInviteModal(false)}
-                  className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  onClick={closeInviteModal}
+                  disabled={isInvitingStudent}
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -562,17 +1092,22 @@ function AdminClasses() {
                 <button
                   type="submit"
                   disabled={isInvitingStudent}
-                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {isInvitingStudent
-                    ? "Inviting..."
+                    ? "Adding..."
                     : "Invite Student"}
                 </button>
+
               </div>
+
             </form>
+
           </div>
+
         </div>
       )}
+
     </div>
   );
 }
