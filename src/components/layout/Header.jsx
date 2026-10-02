@@ -4,7 +4,6 @@ import { Link, useNavigate } from "react-router-dom";
 import {
   Menu,
   Bell,
-  UserCircle,
   Search,
   User,
   Settings,
@@ -13,6 +12,15 @@ import {
 } from "lucide-react";
 
 import { useAuth } from "../../context/AuthContext";
+
+/*
+ * Palette pulled from the DNHS logo
+ *   navy  #000062
+ *   gold  #EABE3E
+ *
+ * Height is h-20 so it lines up with the sidebar's brand block.
+ * If you change one, change the other.
+ */
 
 function Header({ onMenuClick }) {
   const { user, logout } = useAuth();
@@ -26,6 +34,8 @@ function Header({ onMenuClick }) {
     teacher: "Teacher",
     admin: "Administrator",
   };
+
+  const displayName = user?.name || user?.username || "User";
 
   // Close the profile dropdown when clicking anywhere outside it
   useEffect(() => {
@@ -50,25 +60,23 @@ function Header({ onMenuClick }) {
   };
 
   return (
-    <header className="flex h-16 items-center justify-between border-b bg-white px-4 lg:px-6">
-
+    <header className="flex h-20 shrink-0 items-center justify-between border-b border-[#EABE3E]/60 bg-white px-4 lg:px-8">
       {/* Left side */}
       <div className="flex items-center gap-3">
         <button
           onClick={onMenuClick}
-          className="rounded-md p-2 text-blue-700 hover:bg-blue-50 lg:hidden"
+          className="rounded-lg p-2 text-[#000062] hover:bg-[#000062]/5 lg:hidden"
+          aria-label="Open sidebar"
         >
           <Menu size={22} />
         </button>
 
-        <div className="hidden sm:block">
-          <h2 className="text-lg font-semibold text-blue-700">
+        <div className="hidden leading-tight sm:block">
+          <h2 className="text-lg font-bold tracking-tight text-[#000062]">
             {roleName[user?.role] || "User"}
           </h2>
 
-          <p className="hidden text-xs text-gray-500 sm:block">
-            Welcome back
-          </p>
+          <p className="text-xs text-gray-500">Welcome back</p>
         </div>
       </div>
 
@@ -77,67 +85,89 @@ function Header({ onMenuClick }) {
         <div className="relative">
           <Search
             size={18}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-blue-700"
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#000062]/60"
           />
 
           <input
             type="text"
             placeholder="Search..."
-            className="w-full rounded-md border border-gray-200 bg-white py-2 pl-10 pr-4 text-sm text-gray-700 outline-none transition focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
+            className="w-full rounded-lg border border-transparent bg-[#000062]/5 py-2.5 pl-10 pr-4 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-[#EABE3E] focus:bg-white focus:ring-2 focus:ring-[#EABE3E]/30"
           />
         </div>
       </div>
 
       {/* Right side */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1 sm:gap-2">
         {/* Search icon - shown only when the bar is collapsed on small screens */}
-        <button className="rounded-md p-2 text-blue-700 hover:bg-blue-50 md:hidden">
+        <button
+          className="rounded-lg p-2 text-[#000062] hover:bg-[#000062]/5 md:hidden"
+          aria-label="Search"
+        >
           <Search size={20} />
         </button>
 
-        <button className="relative rounded-md p-2 text-blue-700 hover:bg-blue-50">
+        <button
+          className="relative rounded-lg p-2 text-[#000062] hover:bg-[#000062]/5"
+          aria-label="Notifications"
+        >
           <Bell size={20} />
 
-          <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500 ring-2 ring-white" />
+          <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500 ring-2 ring-white" />
         </button>
+
+        {/* Divider */}
+        <div className="mx-1 hidden h-8 w-px bg-gray-200 sm:block" />
 
         {/* Profile menu */}
         <div className="relative" ref={profileRef}>
           <button
             onClick={() => setProfileOpen((prev) => !prev)}
-            className="flex items-center gap-2 rounded-md p-2 text-blue-700 hover:bg-blue-50"
+            className="flex items-center gap-2.5 rounded-lg p-1.5 pr-2 hover:bg-[#000062]/5"
+            aria-haspopup="menu"
+            aria-expanded={profileOpen}
           >
-            <UserCircle size={24} />
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#000062] text-sm font-bold text-[#EABE3E] ring-2 ring-[#EABE3E]/60">
+              {displayName.charAt(0).toUpperCase()}
+            </span>
 
-            <span className="hidden text-sm font-medium sm:block">
-              {user?.name || "User"}
+            <span className="hidden text-left leading-tight sm:block">
+              <span className="block max-w-[10rem] truncate text-sm font-medium text-[#000062]">
+                {displayName}
+              </span>
+              <span className="block text-xs text-gray-500">
+                {roleName[user?.role] || "User"}
+              </span>
             </span>
 
             <ChevronDown
               size={16}
-              className={`hidden transition-transform sm:block ${profileOpen ? "rotate-180" : ""}`}
+              className={`hidden text-[#000062]/60 transition-transform sm:block ${
+                profileOpen ? "rotate-180" : ""
+              }`}
             />
           </button>
 
           {profileOpen && (
-            <div className="absolute right-0 top-full z-50 mt-2 w-52 overflow-hidden rounded-md border border-gray-200 bg-white py-1 shadow-lg">
+            <div className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
               {/* Name / role */}
-              <div className="border-b px-4 py-2">
-                <p className="truncate text-sm font-medium text-gray-800">
-                  {user?.name || "User"}
+              <div className="border-b border-gray-100 bg-[#000062] px-4 py-3">
+                <p className="truncate text-sm font-medium text-white">
+                  {displayName}
                 </p>
 
-                <p className="truncate text-xs text-gray-500">
+                <p className="truncate text-xs text-white/60">
                   {roleName[user?.role] || "User"}
                 </p>
+
+                <div className="mt-2 h-0.5 w-8 rounded-full bg-[#EABE3E]" />
               </div>
 
               {/* Profile / Settings */}
-              <div className="border-b py-1">
+              <div className="border-b border-gray-100 py-1">
                 <Link
                   to={`/${user?.role}/profile`}
                   onClick={closeProfile}
-                  className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700"
+                  className="flex items-center gap-2.5 px-4 py-2 text-sm text-gray-700 hover:bg-[#000062]/5 hover:text-[#000062]"
                 >
                   <User size={16} />
                   Profile
@@ -146,7 +176,7 @@ function Header({ onMenuClick }) {
                 <Link
                   to={`/${user?.role}/settings`}
                   onClick={closeProfile}
-                  className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700"
+                  className="flex items-center gap-2.5 px-4 py-2 text-sm text-gray-700 hover:bg-[#000062]/5 hover:text-[#000062]"
                 >
                   <Settings size={16} />
                   Settings
@@ -156,7 +186,7 @@ function Header({ onMenuClick }) {
               {/* Logout */}
               <button
                 onClick={handleLogout}
-                className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700"
+                className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-red-50 hover:text-red-600"
               >
                 <LogOut size={16} />
                 Logout
