@@ -98,7 +98,8 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// CREATE activity
+
+ // CREATE activity
 router.post("/", async (req, res) => {
   try {
     const {
@@ -107,21 +108,35 @@ router.post("/", async (req, res) => {
       classId,
       academicPeriodId,
       type,
+      gradingCategory,
       totalPoints,
       date,
     } = req.body;
 
+    // Validate required fields
     if (
-      !title ||
+      !title?.trim() ||
       !classId ||
       !academicPeriodId ||
       !type ||
+      !gradingCategory ||
       totalPoints === undefined ||
+      totalPoints === null ||
+      totalPoints === "" ||
       !date
     ) {
       return res.status(400).json({
         error:
-          "Title, class, academic period, type, total points, and date are required",
+          "Title, class, academic period, type, grading category, total points, and date are required",
+      });
+    }
+
+    // Validate points
+    const points = Number(totalPoints);
+
+    if (!Number.isFinite(points) || points <= 0) {
+      return res.status(400).json({
+        error: "Total points must be a number greater than zero",
       });
     }
 
@@ -144,11 +159,10 @@ router.post("/", async (req, res) => {
       });
     }
 
-    // Make sure the academic period belongs to
-    // the same school year as the class.
+    // Verify that the period belongs to the class's school year
     if (
-      academicPeriod.schoolYear !==
-      classData.schoolYear
+      String(academicPeriod.schoolYear) !==
+      String(classData.schoolYear)
     ) {
       return res.status(400).json({
         error:
@@ -156,29 +170,41 @@ router.post("/", async (req, res) => {
       });
     }
 
+    // Create activity, including the required grading category
     const activity = await Activity.create({
       title: title.trim(),
       description: description?.trim() || "",
       class: classId,
       academicPeriod: academicPeriodId,
       type,
-      totalPoints: Number(totalPoints),
+      gradingCategory,
+      totalPoints: points,
       date,
     });
 
-    const populatedActivity =
-      await Activity.findById(activity._id)
-        .populate("class")
-        .populate("academicPeriod");
+    // Return populated activity
+    const populatedActivity = await Activity.findById(activity._id)
+      .populate("class")
+      .populate("academicPeriod");
 
-    res.status(201).json(populatedActivity);
+    return res.status(201).json(populatedActivity);
   } catch (error) {
-    console.error(
-      "Error creating activity:",
-      error.message
-    );
+    console.error("Error creating activity:", error);
 
-    res.status(500).json({
+    // Surface validation errors to the frontend
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        error: error.message,
+      });
+    }
+
+    if (error.name === "CastError") {
+      return res.status(400).json({
+        error: `Invalid value for ${error.path}`,
+      });
+    }
+
+    return res.status(500).json({
       error: "Failed to create activity",
     });
   }
