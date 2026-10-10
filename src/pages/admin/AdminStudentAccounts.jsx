@@ -7,6 +7,7 @@ import {
   Mail,
   UserRoundPlus,
   X,
+  Pencil,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -358,6 +359,11 @@ export default function AdminStudentAccounts() {
                   key={student._id}
                   student={student}
                   onAssign={openAssignModal}
+                  onEdit={() =>
+                    navigate(
+                      `/admin/accounts/students/${student._id}/edit`
+                    )
+                  }
                 />
               ))}
             </div>
@@ -508,7 +514,7 @@ function SummaryCard({
  * -----------------------------------------
  */
 
-function StudentRow({ student, onAssign }) {
+function StudentRow({ student, onAssign, onEdit }) {
   const assigned = Boolean(student.classId);
 
   return (
@@ -590,13 +596,22 @@ function StudentRow({ student, onAssign }) {
       </div>
 
       {/* Action */}
-      <div className="lg:w-32 lg:text-right">
+      <div className="flex gap-2 lg:w-auto lg:justify-end">
         <button
+          type="button"
+          onClick={onEdit}
+          className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
+        >
+          <Pencil size={16} />
+          Edit
+        </button>
+
+        <button
+          type="button"
           onClick={() => onAssign(student)}
           className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100"
         >
           <UserRoundPlus size={16} />
-
           {assigned ? "Reassign" : "Assign"}
         </button>
       </div>

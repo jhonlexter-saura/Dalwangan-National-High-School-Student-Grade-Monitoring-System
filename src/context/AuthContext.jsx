@@ -34,6 +34,7 @@ export function AuthProvider({ children }) {
 
       setUser(result.user);
 
+      localStorage.setItem("dnhs_token", result.token);
       localStorage.setItem(
         "dnhs_user",
         JSON.stringify(result.user)
@@ -54,6 +55,7 @@ export function AuthProvider({ children }) {
   const logout = useCallback(() => {
     setUser(null);
     localStorage.removeItem("dnhs_user");
+    localStorage.removeItem("dnhs_token");
   }, []);
 
   return (

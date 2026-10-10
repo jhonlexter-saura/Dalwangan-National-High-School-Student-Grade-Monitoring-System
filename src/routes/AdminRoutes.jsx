@@ -11,6 +11,7 @@ import AdminTeacherAccountCreate from "../pages/admin/AdminTeacherAccountCreate"
 import AdminTeacherAccounts from "../pages/admin/AdminTeacherAccounts";
 import AdminAccountCreate from "../pages/admin/AdminAccountCreate";
 import AdminAccounts from "../pages/admin/AdminAccounts";
+import AdminUserEdit from "../pages/admin/AdminUserEdit";
 
 const adminRoutes = [
   {
@@ -60,6 +61,10 @@ const adminRoutes = [
   {
     path: "/admin/accounts/admins",
     element: <AdminAccounts />,
+  },
+  {
+    path: "/admin/accounts/:role/:id/edit",
+    element: <AdminUserEdit />,
   },
 ];
 

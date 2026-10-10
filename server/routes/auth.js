@@ -2,11 +2,21 @@ const express = require("express");
 const bcrypt = require("bcrypt");
 
 const User = require("../models/User");
+const {
+  createAccessToken,
+  isAuthenticationConfigured,
+} = require("../middleware/authorization");
 
 const router = express.Router();
 
 router.post("/login", async (req, res) => {
   try {
+    if (!isAuthenticationConfigured()) {
+      return res.status(503).json({
+        error: "Authentication is not configured on this server",
+      });
+    }
+
     const { email, password } = req.body;
 
     if (!email || !password) {
@@ -51,6 +61,7 @@ router.post("/login", async (req, res) => {
     res.json({
       success: true,
       user: safeUser,
+      token: createAccessToken(user._id),
     });
   } catch (error) {
     console.error("Login error:", error);

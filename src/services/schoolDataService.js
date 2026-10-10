@@ -1,9 +1,11 @@
 const API_URL = "http://localhost:5000/api";
 
 async function request(endpoint, options = {}) {
+  const token = localStorage.getItem("dnhs_token");
   const response = await fetch(`${API_URL}${endpoint}`, {
     headers: {
       "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options.headers || {}),
     },
     ...options,
@@ -39,6 +41,17 @@ export function createClass(data) {
 
 export function getStudents() {
   return request("/students");
+}
+
+export function getStudent(id) {
+  return request(`/students/${id}`);
+}
+
+export function updateStudentProfile(id, data) {
+  return request(`/students/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
 }
 
 export function createStudent(data) {
@@ -99,6 +112,17 @@ export function saveScore(data) {
 
 export function getUsers() {
   return request("/users");
+}
+
+export function getUser(id) {
+  return request(`/users/${id}`);
+}
+
+export function updateUserProfile(id, data) {
+  return request(`/users/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
 }
 
 export function createUser(data) {

@@ -1,9 +1,11 @@
 const express = require("express");
 const bcrypt = require("bcrypt");
+const mongoose = require("mongoose");
 
 const User = require("../models/User");
 const Student = require("../models/Student");
 const Teacher = require("../models/Teacher");
+const { requireAdmin } = require("../middleware/authorization");
 
 const router = express.Router();
 
@@ -44,6 +46,97 @@ router.get("/:id", async (req, res) => {
 
     res.status(500).json({
       error: "Failed to fetch user",
+    });
+  }
+});
+
+// UPDATE an existing teacher or administrator profile. Role, status, and password
+// are deliberately immutable through this profile-editing endpoint.
+router.patch("/:id", requireAdmin, async (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+      return res.status(400).json({ error: "A profile update is required" });
+    }
+
+    if (
+      Object.hasOwn(req.body, "role") ||
+      Object.hasOwn(req.body, "password") ||
+      Object.hasOwn(req.body, "status")
+    ) {
+      return res.status(400).json({
+        error: "Role, status, and password cannot be changed here",
+      });
+    }
+
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: "Invalid user ID" });
+    }
+
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    if (!["teacher", "admin"].includes(user.role)) {
+      return res.status(400).json({
+        error: "Use the student profile endpoint to edit student accounts",
+      });
+    }
+
+    const name =
+      typeof req.body.name === "string" ? req.body.name.trim() : user.name;
+    const email =
+      typeof req.body.email === "string"
+        ? req.body.email.trim().toLowerCase()
+        : user.email;
+
+    if (!name || !email) {
+      return res.status(400).json({
+        error: "Name and email are required",
+      });
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: "Enter a valid email address" });
+    }
+
+    const existingUser = await User.findOne({
+      email,
+      _id: { $ne: user._id },
+    });
+
+    if (existingUser) {
+      return res.status(409).json({ error: "Email is already registered" });
+    }
+
+    user.name = name;
+    user.email = email;
+    await user.save();
+
+    if (user.role === "teacher") {
+      await Teacher.updateOne(
+        { user: user._id },
+        { $set: { name, email } }
+      );
+    }
+
+    return res.json({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      status: user.status,
+    });
+  } catch (error) {
+    console.error("Update user profile error:", error);
+
+    if (error.code === 11000) {
+      return res.status(409).json({ error: "Email is already registered" });
+    }
+
+    return res.status(500).json({
+      error: "Failed to update user profile",
     });
   }
 });

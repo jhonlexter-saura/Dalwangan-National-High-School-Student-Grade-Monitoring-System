@@ -88,6 +88,10 @@ export default function AdminAccounts() {
                   <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
                     Status
                   </th>
+
+                  <th className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Action
+                  </th>
                 </tr>
               </thead>
 
@@ -120,6 +124,15 @@ export default function AdminAccounts() {
                       >
                         {admin.status}
                       </span>
+                    </td>
+
+                    <td className="px-6 py-4 text-right">
+                      <Link
+                        to={`/admin/accounts/admins/${admin._id}/edit`}
+                        className="inline-flex items-center rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                      >
+                        Edit
+                      </Link>
                     </td>
                   </tr>
                 ))}
