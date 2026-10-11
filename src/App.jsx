@@ -5,6 +5,8 @@ import ProtectedRoute from "./components/auth/ProtectedRoute";
 
 import Login from "./pages/auth/Login";
 import Unauthorized from "./pages/auth/Unauthorized";
+import ForgotPassword from "./pages/auth/ForgotPassword";
+import ResetPassword from "./pages/auth/ResetPassword";
 
 import { studentRoutes } from "./routes/StudentRoutes";
 import { teacherRoutes } from "./routes/TeacherRoutes";
@@ -26,6 +28,14 @@ function AppRoutes() {
     {
       path: "/unauthorized",
       element: <Unauthorized />,
+    },
+    {
+      path: "/forgot-password",
+      element: <ForgotPassword />,
+    },
+    {
+      path: "/reset-password/:token",
+      element: <ResetPassword />,
     },
 
     // Protected application

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../../context/AuthContext";
 
@@ -98,12 +98,21 @@ function Login() {
           </div>
 
           <div>
-            <label
-              htmlFor="password"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Password
-            </label>
+            <div className="flex items-center justify-between">
+              <label
+                htmlFor="password"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Password
+              </label>
+
+              <Link
+                to="/forgot-password"
+                className="text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline"
+              >
+                Forgot password?
+              </Link>
+            </div>
 
             <input
               id="password"
