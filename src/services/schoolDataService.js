@@ -155,6 +155,20 @@ export function loginUser(data) {
   });
 }
 
+export function forgotPassword(data) {
+  return request("/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function resetPassword(data) {
+  return request("/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
 export function getClassesByTeacher(userId) {
   return request(`/classes/teacher/${userId}`);
 }

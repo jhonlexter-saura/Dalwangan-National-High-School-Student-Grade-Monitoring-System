@@ -32,6 +32,19 @@ const userSchema = new mongoose.Schema(
       enum: ["active", "inactive"],
       default: "active",
     },
+
+    // Password recovery (the token is stored hashed, never in plain text).
+    // select: false keeps these out of normal queries, so they can never
+    // leak into API responses such as the login payload.
+    resetPasswordToken: {
+      type: String,
+      select: false,
+    },
+
+    resetPasswordExpires: {
+      type: Date,
+      select: false,
+    },
   },
   {
     timestamps: true,
