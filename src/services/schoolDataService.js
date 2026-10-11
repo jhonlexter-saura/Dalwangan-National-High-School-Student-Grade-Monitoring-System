@@ -2,16 +2,24 @@ const API_URL = "http://localhost:5000/api";
 
 async function request(endpoint, options = {}) {
   const token = localStorage.getItem("dnhs_token");
+  const { headers, ...rest } = options;
+
   const response = await fetch(`${API_URL}${endpoint}`, {
+    ...rest,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers || {}),
+      ...(headers || {}),
     },
-    ...options,
   });
 
-  const data = await response.json();
+  const data = await response.json().catch(() => ({}));
+
+  if (response.status === 401 && endpoint !== "/auth/login") {
+    localStorage.removeItem("dnhs_token");
+    localStorage.removeItem("dnhs_user");
+    window.location.assign("/login");
+  }
 
   if (!response.ok) {
     throw new Error(data.error || "Something went wrong");

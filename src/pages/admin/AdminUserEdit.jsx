@@ -8,6 +8,15 @@ import {
 } from "../../services/schoolDataService";
 import { useToast } from "../../context/ToastContext";
 
+const roleAliases = {
+  student: "student",
+  students: "student",
+  teacher: "teacher",
+  teachers: "teacher",
+  admin: "admin",
+  admins: "admin",
+};
+
 const roleLabels = {
   student: "Student",
   teacher: "Teacher",
@@ -27,7 +36,8 @@ const inputClassName =
   "w-full rounded-lg border border-gray-300 px-4 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-50";
 
 export default function AdminUserEdit() {
-  const { role, id } = useParams();
+  const { role: roleParam, id } = useParams();
+  const role = roleAliases[roleParam];
   const navigate = useNavigate();
   const { showToast } = useToast();
   const [formData, setFormData] = useState(emptyProfile);

@@ -4,6 +4,33 @@ const Teacher = require("../models/Teacher")
 
 const router = express.Router();
 
+function normalizeGradingSystem(gradingSystem) {
+  const normalizedGradingSystem = gradingSystem?.enabled
+    ? {
+        enabled: true,
+        components: Array.isArray(gradingSystem.components)
+          ? gradingSystem.components
+          : [],
+      }
+    : {
+        enabled: false,
+        components: [],
+      };
+
+  if (normalizedGradingSystem.enabled) {
+    const totalPercentage = normalizedGradingSystem.components.reduce(
+      (sum, component) => sum + Number(component?.percentage || 0),
+      0
+    );
+
+    if (totalPercentage !== 100) {
+      return null;
+    }
+  }
+
+  return normalizedGradingSystem;
+}
+
 // GET all classes
 router.get("/", async (req, res) => {
   try {
@@ -56,11 +83,20 @@ router.post("/teacher/:userId", async (req, res) => {
       section,
       gradeLevel,
       schoolYear,
+      gradingSystem,
     } = req.body;
 
     if (!name || !section || gradeLevel === undefined || !schoolYear) {
       return res.status(400).json({
         error: "Name, section, grade level, and school year are required",
+      });
+    }
+
+    const normalizedGradingSystem = normalizeGradingSystem(gradingSystem);
+
+    if (!normalizedGradingSystem) {
+      return res.status(400).json({
+        error: "Grading percentages must total 100%",
       });
     }
 
@@ -81,6 +117,7 @@ router.post("/teacher/:userId", async (req, res) => {
       teacher: teacher._id,
       schoolYear: schoolYear.trim(),
       students: [],
+      gradingSystem: normalizedGradingSystem,
     });
 
     const populatedClass = await Class.findById(newClass._id)
@@ -120,24 +157,66 @@ router.get("/:id", async (req, res) => {
 // CREATE class
 router.post("/", async (req, res) => {
   try {
-    const { name, section, gradeLevel, adviser, schoolYear } = req.body;
+    const {
+      name,
+      section,
+      gradeLevel,
+      teacher: teacherId,
+      schoolYear,
+      gradingSystem,
+    } = req.body;
 
-    if (!name || !section || !gradeLevel || !adviser || !schoolYear) {
+    if (
+      !name ||
+      !section ||
+      gradeLevel === undefined ||
+      !teacherId ||
+      !schoolYear
+    ) {
       return res.status(400).json({
         error: "All class fields are required",
       });
     }
 
-    const newClass = await Class.create({
-      name,
-      section,
-      gradeLevel,
-      adviser,
-      schoolYear,
-      students: [],
+    if (!/^[a-f\d]{24}$/i.test(String(teacherId))) {
+      return res.status(400).json({
+        error: "Invalid teacher",
+      });
+    }
+
+    const normalizedGradingSystem = normalizeGradingSystem(gradingSystem);
+
+    if (!normalizedGradingSystem) {
+      return res.status(400).json({
+        error: "Grading percentages must total 100%",
+      });
+    }
+
+    const teacherProfile = await Teacher.findOne({
+      user: teacherId,
     });
 
-    res.status(201).json(newClass);
+    if (!teacherProfile) {
+      return res.status(404).json({
+        error: "Teacher profile not found",
+      });
+    }
+
+    const newClass = await Class.create({
+      name: name.trim(),
+      section: section.trim(),
+      gradeLevel: Number(gradeLevel),
+      teacher: teacherProfile._id,
+      schoolYear: schoolYear.trim(),
+      students: [],
+      gradingSystem: normalizedGradingSystem,
+    });
+
+    const populatedClass = await Class.findById(newClass._id)
+      .populate("teacher")
+      .populate("students");
+
+    res.status(201).json(populatedClass);
   } catch (error) {
     console.error("Error creating class:", error.message);
     res.status(500).json({

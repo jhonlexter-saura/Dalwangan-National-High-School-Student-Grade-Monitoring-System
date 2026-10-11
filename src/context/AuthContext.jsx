@@ -12,8 +12,14 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
     const savedUser = localStorage.getItem("dnhs_user");
+    const token = localStorage.getItem("dnhs_token");
 
     if (!savedUser) {
+      return null;
+    }
+
+    if (!token) {
+      localStorage.removeItem("dnhs_user");
       return null;
     }
 
