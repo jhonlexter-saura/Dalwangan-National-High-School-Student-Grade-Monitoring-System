@@ -2,24 +2,17 @@ const API_URL = "http://localhost:5000/api";
 
 async function request(endpoint, options = {}) {
   const token = localStorage.getItem("dnhs_token");
-  const { headers, ...rest } = options;
 
   const response = await fetch(`${API_URL}${endpoint}`, {
-    ...rest,
+    ...options,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(headers || {}),
+      ...(options.headers || {}),
     },
   });
 
   const data = await response.json().catch(() => ({}));
-
-  if (response.status === 401 && endpoint !== "/auth/login") {
-    localStorage.removeItem("dnhs_token");
-    localStorage.removeItem("dnhs_user");
-    window.location.assign("/login");
-  }
 
   if (!response.ok) {
     throw new Error(data.error || "Something went wrong");
@@ -230,5 +223,24 @@ export function updateStudentAccountStatus(id, status) {
   return request(`/students/${id}/status`, {
     method: "PATCH",
     body: JSON.stringify({ status }),
+  });
+}
+
+
+export async function getMyProfile() {
+  return request("/users/me", {
+    headers: {
+      Authorization: `Bearer ${localStorage.getItem("dnhs_token") || ""}`,
+    },
+  });
+}
+
+export async function updateMyProfile(profileData) {
+  return request("/users/me", {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${localStorage.getItem("dnhs_token") || ""}`,
+    },
+    body: JSON.stringify(profileData),
   });
 }

@@ -3,6 +3,7 @@ import TeacherClassDetails from "../pages/teacher/TeacherClassDetails";
 import TeacherClasses from "../pages/teacher/TeacherClasses";
 import TeacherDashboard from "../pages/teacher/TeacherDashboard";
 import TeacherScores from "../pages/teacher/TeacherScores";
+import TeacherProfile from "../pages/teacher/TeacherProfile";
 
 const teacherRoutes = [
   {
@@ -24,7 +25,11 @@ const teacherRoutes = [
   {
     path: "teacher/scores",
     element: <TeacherScores />,
-  }
+  },
+  {
+    path: "teacher/profile",
+    element: <TeacherProfile />,
+  },
 ];
 
 export {teacherRoutes};

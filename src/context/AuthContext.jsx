@@ -1,3 +1,4 @@
+
 import {
   createContext,
   useCallback,
@@ -14,11 +15,7 @@ export function AuthProvider({ children }) {
     const savedUser = localStorage.getItem("dnhs_user");
     const token = localStorage.getItem("dnhs_token");
 
-    if (!savedUser) {
-      return null;
-    }
-
-    if (!token) {
+    if (!savedUser || !token) {
       localStorage.removeItem("dnhs_user");
       return null;
     }
@@ -27,24 +24,30 @@ export function AuthProvider({ children }) {
       return JSON.parse(savedUser);
     } catch {
       localStorage.removeItem("dnhs_user");
+      localStorage.removeItem("dnhs_token");
       return null;
     }
   });
 
+  const updateUser = useCallback((updates) => {
+    setUser((currentUser) => {
+      if (!currentUser) return currentUser;
+
+      const nextUser = { ...currentUser, ...updates };
+
+      localStorage.setItem("dnhs_user", JSON.stringify(nextUser));
+
+      return nextUser;
+    });
+  }, []);
+
   const login = async (email, password) => {
     try {
-      const result = await loginUser({
-        email,
-        password,
-      });
+      const result = await loginUser({ email, password });
 
       setUser(result.user);
-
       localStorage.setItem("dnhs_token", result.token);
-      localStorage.setItem(
-        "dnhs_user",
-        JSON.stringify(result.user)
-      );
+      localStorage.setItem("dnhs_user", JSON.stringify(result.user));
 
       return {
         success: true,
@@ -70,6 +73,7 @@ export function AuthProvider({ children }) {
         user,
         login,
         logout,
+        updateUser,
       }}
     >
       {children}

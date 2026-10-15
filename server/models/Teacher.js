@@ -1,3 +1,4 @@
+
 const mongoose = require("mongoose");
 
 const teacherSchema = new mongoose.Schema(
@@ -15,10 +16,52 @@ const teacherSchema = new mongoose.Schema(
       trim: true,
     },
 
+    firstName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    middleName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    lastName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    nameExtension: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
     email: {
       type: String,
       required: true,
       lowercase: true,
+      trim: true,
+    },
+
+    birthdate: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    contactNumber: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    address: {
+      type: String,
+      default: "",
       trim: true,
     },
 

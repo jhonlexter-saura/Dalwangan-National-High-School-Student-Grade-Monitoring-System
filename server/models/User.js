@@ -1,3 +1,4 @@
+
 const mongoose = require("mongoose");
 
 const userSchema = new mongoose.Schema(
@@ -5,6 +6,30 @@ const userSchema = new mongoose.Schema(
     name: {
       type: String,
       required: true,
+      trim: true,
+    },
+
+    firstName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    middleName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    lastName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    nameExtension: {
+      type: String,
+      default: "",
       trim: true,
     },
 
@@ -51,9 +76,6 @@ const userSchema = new mongoose.Schema(
       trim: true,
     },
 
-    // Password recovery (the token is stored hashed, never in plain text).
-    // select: false keeps these out of normal queries, so they can never
-    // leak into API responses such as the login payload.
     resetPasswordToken: {
       type: String,
       select: false,
