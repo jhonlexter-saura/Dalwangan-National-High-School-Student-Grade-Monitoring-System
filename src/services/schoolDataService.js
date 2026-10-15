@@ -200,3 +200,35 @@ export function getAcademicPeriods(schoolYear) {
 
   return request(`/academic-periods${query}`);
 }
+
+export function createAcademicPeriod(data) {
+  return request("/academic-periods", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateAcademicPeriod(id, data) {
+  return request(`/academic-periods/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteAcademicPeriod(id) {
+  return request(`/academic-periods/${id}`, { method: "DELETE" });
+}
+
+export function updateTeacherAccountStatus(id, status) {
+  return request(`/users/${id}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  });
+}
+
+export function updateStudentAccountStatus(id, status) {
+  return request(`/students/${id}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  });
+}

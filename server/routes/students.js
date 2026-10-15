@@ -41,6 +41,43 @@ router.get("/:id", async (req, res) => {
   }
 });
 
+router.patch("/:id/status", requireAdmin, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: "Invalid student ID" });
+    }
+    const { status } = req.body || {};
+    if (!["active", "inactive"].includes(status)) {
+      return res.status(400).json({ error: "Status must be active or inactive" });
+    }
+
+    const student = await Student.findById(req.params.id);
+    if (!student) {
+      return res.status(404).json({ error: "Student not found" });
+    }
+
+    if (student.user) {
+      const user = await User.findOne({ _id: student.user, role: "student" });
+      if (!user) {
+        return res.status(409).json({
+          error: "The linked student login account could not be found",
+        });
+      }
+      user.status = status;
+      await user.save();
+    }
+
+    student.status = status;
+    await student.save();
+    return res.json(student);
+  } catch (error) {
+    console.error("Update student account status error:", error);
+    return res.status(500).json({
+      error: "Failed to update student account status",
+    });
+  }
+});
+
 // UPDATE a student profile and synchronize its linked login account, if present.
 router.patch("/:id", requireAdmin, async (req, res) => {
   try {

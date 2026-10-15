@@ -1,0 +1,325 @@
+import { useEffect, useMemo, useState } from "react";
+import { CalendarDays, Pencil, Plus, Save, Trash2, X } from "lucide-react";
+import { useToast } from "../../context/ToastContext";
+import {
+  createAcademicPeriod,
+  deleteAcademicPeriod,
+  getAcademicPeriods,
+  updateAcademicPeriod,
+} from "../../services/schoolDataService";
+
+const emptyForm = {
+  schoolYear: "",
+  trimester: "1",
+  name: "Trimester 1",
+  startDate: "",
+  endDate: "",
+  status: "upcoming",
+};
+
+const inputClassName =
+  "w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
+
+function dateLabel(value) {
+  if (!value) return "—";
+  const [year, month, day] = value.slice(0, 10).split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString();
+}
+
+export default function AdminAcademicCalendar() {
+  const { showToast } = useToast();
+  const [periods, setPeriods] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [editingId, setEditingId] = useState("");
+  const [formData, setFormData] = useState(emptyForm);
+
+  const schoolYears = useMemo(
+    () => [...new Set(periods.map((period) => period.schoolYear))].sort().reverse(),
+    [periods]
+  );
+  const usedTrimesters = useMemo(
+    () =>
+      new Set(
+        periods
+          .filter(
+            (period) =>
+              period.schoolYear === formData.schoolYear &&
+              period._id !== editingId
+          )
+          .map((period) => Number(period.trimester))
+      ),
+    [periods, formData.schoolYear, editingId]
+  );
+  const groupedPeriods = useMemo(
+    () =>
+      periods.reduce((groups, period) => {
+        groups[period.schoolYear] ||= [];
+        groups[period.schoolYear].push(period);
+        return groups;
+      }, {}),
+    [periods]
+  );
+
+  useEffect(() => {
+    let mounted = true;
+    getAcademicPeriods()
+      .then((data) => {
+        if (mounted) setPeriods(data);
+      })
+      .catch((loadError) => {
+        console.error("Failed to load the school-year calendar:", loadError);
+        if (mounted) {
+          setError(loadError.message || "Failed to load the school-year calendar.");
+        }
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const loadPeriods = async () => {
+    try {
+      setError("");
+      setPeriods(await getAcademicPeriods());
+    } catch (loadError) {
+      console.error("Failed to refresh the school-year calendar:", loadError);
+      setError(loadError.message || "Failed to refresh the calendar.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetForm = () => {
+    setEditingId("");
+    setFormData(emptyForm);
+    setError("");
+  };
+
+  const handleChange = (event) => {
+    const { name, value } = event.target;
+    setFormData((current) => ({
+      ...current,
+      [name]: value,
+      ...(name === "trimester" && !editingId
+        ? { name: `Trimester ${value}` }
+        : {}),
+    }));
+  };
+
+  const handleEdit = (period) => {
+    setError("");
+    setEditingId(period._id);
+    setFormData({
+      schoolYear: period.schoolYear,
+      trimester: String(period.trimester),
+      name: period.name,
+      startDate: period.startDate.slice(0, 10),
+      endDate: period.endDate.slice(0, 10),
+      status: period.status,
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setError("");
+    if (!formData.schoolYear.trim() || !formData.name.trim()) {
+      setError("School year and term name are required.");
+      return;
+    }
+    if (
+      !formData.startDate ||
+      !formData.endDate ||
+      formData.startDate >= formData.endDate
+    ) {
+      setError("Enter valid dates with the end date after the start date.");
+      return;
+    }
+
+    const data = {
+      ...formData,
+      schoolYear: formData.schoolYear.trim(),
+      name: formData.name.trim(),
+      trimester: Number(formData.trimester),
+    };
+    try {
+      setSaving(true);
+      if (editingId) {
+        await updateAcademicPeriod(editingId, data);
+        showToast("Term updated successfully.", "success");
+      } else {
+        await createAcademicPeriod(data);
+        showToast("Term added to the school-year calendar.", "success");
+      }
+      resetForm();
+      await loadPeriods();
+    } catch (saveError) {
+      console.error("Failed to save academic period:", saveError);
+      setError(saveError.message || "Failed to save the term.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (period) => {
+    if (!window.confirm(`Delete ${period.name} for ${period.schoolYear}?`)) return;
+    try {
+      setError("");
+      await deleteAcademicPeriod(period._id);
+      if (editingId === period._id) resetForm();
+      showToast("Term deleted.", "success");
+      await loadPeriods();
+    } catch (deleteError) {
+      console.error("Failed to delete academic period:", deleteError);
+      setError(deleteError.message || "Failed to delete the term.");
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <header>
+        <h1 className="text-2xl font-bold text-gray-900">School Year Calendar</h1>
+        <p className="mt-1 text-sm text-gray-500">
+          Set school years, trimester dates, and the current active term.
+        </p>
+      </header>
+
+      <section className="max-w-3xl rounded-xl border bg-white p-5 shadow-sm sm:p-6">
+        <div className="mb-5 flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+            {editingId ? <Pencil size={20} /> : <CalendarDays size={20} />}
+          </div>
+          <div>
+            <h2 className="font-semibold text-gray-900">
+              {editingId ? "Edit term" : "Set up a school year term"}
+            </h2>
+            <p className="text-sm text-gray-500">
+              Each school year supports up to three non-overlapping trimesters.
+            </p>
+          </div>
+        </div>
+
+        {error && (
+          <div role="alert" className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="School year">
+              <input
+                className={inputClassName}
+                name="schoolYear"
+                list="school-year-options"
+                placeholder="2026-2027"
+                value={formData.schoolYear}
+                onChange={handleChange}
+                required
+              />
+              <datalist id="school-year-options">
+                {schoolYears.map((schoolYear) => (
+                  <option key={schoolYear} value={schoolYear} />
+                ))}
+              </datalist>
+            </Field>
+            <Field label="Term">
+              <select className={inputClassName} name="trimester" value={formData.trimester} onChange={handleChange} required>
+                {[1, 2, 3].map((trimester) => (
+                  <option key={trimester} value={trimester} disabled={usedTrimesters.has(trimester)}>
+                    Trimester {trimester}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          <Field label="Term name">
+            <input className={inputClassName} name="name" value={formData.name} onChange={handleChange} placeholder="First Trimester" required />
+          </Field>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Field label="Start date">
+              <input className={inputClassName} type="date" name="startDate" value={formData.startDate} onChange={handleChange} required />
+            </Field>
+            <Field label="End date">
+              <input className={inputClassName} type="date" name="endDate" value={formData.endDate} onChange={handleChange} required />
+            </Field>
+            <Field label="Status">
+              <select className={inputClassName} name="status" value={formData.status} onChange={handleChange}>
+                <option value="upcoming">Upcoming</option>
+                <option value="active">Active</option>
+                <option value="completed">Completed</option>
+              </select>
+            </Field>
+          </div>
+          <div className="flex flex-wrap gap-3 pt-1">
+            <button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
+              {editingId ? <Save size={17} /> : <Plus size={17} />}
+              {saving ? "Saving..." : editingId ? "Save changes" : "Add term"}
+            </button>
+            {editingId && (
+              <button type="button" onClick={resetForm} disabled={saving} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                <X size={17} /> Cancel
+              </button>
+            )}
+          </div>
+        </form>
+      </section>
+
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Calendar terms</h2>
+          <p className="text-sm text-gray-500">Terms already used by activities cannot be removed.</p>
+        </div>
+        {loading ? (
+          <div className="rounded-xl border bg-white p-8 text-center text-sm text-gray-500">Loading calendar...</div>
+        ) : Object.keys(groupedPeriods).length === 0 ? (
+          <div className="rounded-xl border bg-white p-8 text-center text-sm text-gray-500">No terms have been set up yet.</div>
+        ) : (
+          Object.keys(groupedPeriods).sort().reverse().map((schoolYear) => (
+            <div key={schoolYear} className="overflow-hidden rounded-xl border bg-white shadow-sm">
+              <h3 className="border-b bg-gray-50 px-5 py-4 font-semibold text-gray-900">School Year {schoolYear}</h3>
+              <div className="divide-y">
+                {groupedPeriods[schoolYear].slice().sort((a, b) => a.trimester - b.trimester).map((period) => (
+                  <div key={period._id} className="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="font-medium text-gray-900">{period.name}</h4>
+                        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">Trimester {period.trimester}</span>
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${period.status === "active" ? "bg-green-100 text-green-700" : period.status === "completed" ? "bg-gray-100 text-gray-600" : "bg-amber-100 text-amber-700"}`}>
+                          {period.status}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-sm text-gray-500">{dateLabel(period.startDate)} – {dateLabel(period.endDate)}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => handleEdit(period)} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                        <Pencil size={15} /> Edit
+                      </button>
+                      <button type="button" onClick={() => handleDelete(period)} className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50">
+                        <Trash2 size={15} /> Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))
+        )}
+      </section>
+    </div>
+  );
+}
+
+function Field({ label, children }) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-sm font-medium text-gray-700">{label}</span>
+      {children}
+    </label>
+  );
+}

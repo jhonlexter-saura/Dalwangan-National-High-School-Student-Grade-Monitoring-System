@@ -8,18 +8,22 @@ import {
   UserRoundPlus,
   X,
   Pencil,
+  Power,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import {
   getStudents,
   addStudentToClass,
+  updateStudentAccountStatus,
 } from "../../services/schoolDataService";
 
 import { useSchoolData } from "../../context/SchoolDataContext";
+import { useToast } from "../../context/ToastContext";
 
 export default function AdminStudentAccounts() {
   const navigate = useNavigate();
+  const { showToast } = useToast();
 
   const {
     classes,
@@ -37,6 +41,7 @@ export default function AdminStudentAccounts() {
   const [assignClassId, setAssignClassId] = useState("");
 
   const [assigning, setAssigning] = useState(false);
+  const [updatingStudentId, setUpdatingStudentId] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -167,6 +172,35 @@ export default function AdminStudentAccounts() {
 
     setAssignStudent(null);
     setAssignClassId("");
+  };
+
+  const handleToggleStudentStatus = async (student) => {
+    const status = student.status === "active" ? "inactive" : "active";
+    if (
+      status === "inactive" &&
+      !window.confirm(`Deactivate ${student.name}'s account?`)
+    ) {
+      return;
+    }
+    try {
+      setUpdatingStudentId(student._id);
+      setError("");
+      const updatedStudent = await updateStudentAccountStatus(student._id, status);
+      setStudents((current) =>
+        current.map((item) =>
+          item._id === updatedStudent._id ? updatedStudent : item
+        )
+      );
+      showToast(
+        `Student account ${status === "active" ? "activated" : "deactivated"}.`,
+        "success"
+      );
+    } catch (statusError) {
+      console.error("Failed to update student account status:", statusError);
+      setError(statusError.message || "Failed to update account status.");
+    } finally {
+      setUpdatingStudentId("");
+    }
   };
 
   const loading = classesLoading || studentsLoading;
@@ -364,6 +398,8 @@ export default function AdminStudentAccounts() {
                       `/admin/accounts/students/${student._id}/edit`
                     )
                   }
+                  onToggleStatus={handleToggleStudentStatus}
+                  statusUpdating={updatingStudentId === student._id}
                 />
               ))}
             </div>
@@ -514,7 +550,7 @@ function SummaryCard({
  * -----------------------------------------
  */
 
-function StudentRow({ student, onAssign, onEdit }) {
+function StudentRow({ student, onAssign, onEdit, onToggleStatus, statusUpdating }) {
   const assigned = Boolean(student.classId);
 
   return (
@@ -597,6 +633,23 @@ function StudentRow({ student, onAssign, onEdit }) {
 
       {/* Action */}
       <div className="flex gap-2 lg:w-auto lg:justify-end">
+        <button
+          type="button"
+          onClick={() => onToggleStatus(student)}
+          disabled={statusUpdating}
+          className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+            student.status === "inactive"
+              ? "border-green-200 bg-green-50 text-green-700 hover:bg-green-100"
+              : "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+          }`}
+        >
+          <Power size={16} />
+          {statusUpdating
+            ? "Saving..."
+            : student.status === "inactive"
+              ? "Activate"
+              : "Deactivate"}
+        </button>
         <button
           type="button"
           onClick={onEdit}

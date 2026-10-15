@@ -29,3 +29,9 @@ token. If the secret is omitted, the server creates a temporary random secret;
 tokens will stop working after a server restart, so configure a stable secret
 for deployments. Profile updates do not modify passwords, roles, or account
 status.
+
+Administrators can manage school-year trimester dates from the School Year
+Calendar. Term dates cannot overlap, only one term can be active, and terms
+referenced by activities cannot be deleted. Student and teacher account lists
+also provide activate/deactivate controls; student status changes are
+synchronized with the linked login account.

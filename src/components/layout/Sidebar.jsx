@@ -9,6 +9,7 @@ import {
   ShieldPlus,
   Settings,
   X,
+  CalendarDays,
 } from "lucide-react";
 
 import { NavLink } from "react-router-dom";
@@ -153,6 +154,13 @@ function Sidebar({ isOpen, onClose }) {
               <SectionLabel className="mt-8">Account Management</SectionLabel>
 
               <div className="space-y-1">
+                <NavItem
+                  to="/admin/academic-calendar"
+                  icon={<CalendarDays size={20} />}
+                  label="School Year Calendar"
+                  onClick={onClose}
+                />
+
                 <NavItem
                   to="/admin/accounts/students"
                   icon={<UserPlus size={20} />}

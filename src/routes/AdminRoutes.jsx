@@ -13,6 +13,7 @@ import AdminTeacherAccounts from "../pages/admin/AdminTeacherAccounts";
 import AdminAccountCreate from "../pages/admin/AdminAccountCreate";
 import AdminAccounts from "../pages/admin/AdminAccounts";
 import AdminUserEdit from "../pages/admin/AdminUserEdit";
+import AdminAcademicCalendar from "../pages/admin/AdminAcademicCalendar";
 
 const adminRoutes = [
   {
@@ -42,6 +43,10 @@ const adminRoutes = [
   {
     path: "/admin/settings",
     element: <AdminSettings />,
+  },
+  {
+    path: "/admin/academic-calendar",
+    element: <AdminAcademicCalendar />,
   },
   {
     path: "/admin/accounts/students/create",

@@ -1,13 +1,18 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { Power } from "lucide-react";
 import {
   getTeachers,
+  updateTeacherAccountStatus,
 } from "../../services/schoolDataService";
+import { useToast } from "../../context/ToastContext";
 
 export default function AdminTeacherAccounts() {
+  const { showToast } = useToast();
   const [teachers, setTeachers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [updatingId, setUpdatingId] = useState("");
 
   const loadTeachers = async () => {
     try {
@@ -27,6 +32,28 @@ export default function AdminTeacherAccounts() {
   useEffect(() => {
     loadTeachers();
   }, []);
+
+  const handleToggleStatus = async (teacher) => {
+    const status = teacher.status === "active" ? "inactive" : "active";
+    if (status === "inactive" && !window.confirm(`Deactivate ${teacher.name}'s account?`)) {
+      return;
+    }
+
+    try {
+      setUpdatingId(teacher._id);
+      setError("");
+      const updatedTeacher = await updateTeacherAccountStatus(teacher._id, status);
+      setTeachers((current) =>
+        current.map((item) => item._id === updatedTeacher._id ? updatedTeacher : item)
+      );
+      showToast(`Teacher account ${status === "active" ? "activated" : "deactivated"}.`, "success");
+    } catch (statusError) {
+      console.error("Failed to update teacher account status:", statusError);
+      setError(statusError.message || "Failed to update account status.");
+    } finally {
+      setUpdatingId("");
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -129,12 +156,31 @@ export default function AdminTeacherAccounts() {
                     </td>
 
                     <td className="px-6 py-4 text-right">
-                      <Link
-                        to={`/admin/accounts/teachers/${teacher._id}/edit`}
-                        className="inline-flex items-center rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-                      >
-                        Edit
-                      </Link>
+                      <div className="inline-flex gap-2">
+                        <Link
+                          to={`/admin/accounts/teachers/${teacher._id}/edit`}
+                          className="inline-flex items-center rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                        >
+                          Edit
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleStatus(teacher)}
+                          disabled={updatingId === teacher._id}
+                          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium disabled:opacity-50 ${
+                            teacher.status === "active"
+                              ? "border-red-200 text-red-700 hover:bg-red-50"
+                              : "border-green-200 text-green-700 hover:bg-green-50"
+                          }`}
+                        >
+                          <Power size={15} />
+                          {updatingId === teacher._id
+                            ? "Saving..."
+                            : teacher.status === "active"
+                              ? "Deactivate"
+                              : "Activate"}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

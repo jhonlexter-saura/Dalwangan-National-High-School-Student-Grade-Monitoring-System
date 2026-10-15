@@ -1,8 +1,61 @@
 const express = require("express");
+const mongoose = require("mongoose");
 
 const AcademicPeriod = require("../models/AcademicPeriod");
+const Activity = require("../models/Activity");
+const { requireAdmin } = require("../middleware/authorization");
 
 const router = express.Router();
+
+function validatePeriod(input) {
+  const schoolYear =
+    typeof input.schoolYear === "string" ? input.schoolYear.trim() : "";
+  const name = typeof input.name === "string" ? input.name.trim() : "";
+  const trimester = Number(input.trimester);
+  const startDate = new Date(input.startDate);
+  const endDate = new Date(input.endDate);
+  const status = input.status || "upcoming";
+
+  if (!schoolYear || !name || !input.startDate || !input.endDate) {
+    return {
+      error: "School year, trimester, name, start date, and end date are required",
+    };
+  }
+  if (!Number.isInteger(trimester) || trimester < 1 || trimester > 3) {
+    return { error: "Trimester must be 1, 2, or 3" };
+  }
+  if (
+    Number.isNaN(startDate.getTime()) ||
+    Number.isNaN(endDate.getTime()) ||
+    startDate >= endDate
+  ) {
+    return { error: "Enter valid dates with the end date after the start date" };
+  }
+  if (!["upcoming", "active", "completed"].includes(status)) {
+    return { error: "Status must be upcoming, active, or completed" };
+  }
+
+  return { schoolYear, trimester, name, startDate, endDate, status };
+}
+
+async function findCalendarConflict(period, excludeId) {
+  const overlap = await AcademicPeriod.findOne({
+    startDate: { $lte: period.endDate },
+    endDate: { $gte: period.startDate },
+    ...(excludeId ? { _id: { $ne: excludeId } } : {}),
+  });
+  if (overlap) return "The dates overlap another term in the school calendar";
+
+  if (period.status === "active") {
+    const activePeriod = await AcademicPeriod.findOne({
+      status: "active",
+      ...(excludeId ? { _id: { $ne: excludeId } } : {}),
+    });
+    if (activePeriod) return "Another academic period is already active";
+  }
+
+  return null;
+}
 
 router.get("/", async (req, res) => {
   try {
@@ -25,38 +78,15 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.post("/", async (req, res) => {
+router.post("/", requireAdmin, async (req, res) => {
   try {
-    const {
-      schoolYear,
-      trimester,
-      name,
-      startDate,
-      endDate,
-      status,
-    } = req.body;
+    const periodData = validatePeriod(req.body || {});
+    if (periodData.error) return res.status(400).json({ error: periodData.error });
 
-    if (
-      !schoolYear ||
-      trimester === undefined ||
-      !name ||
-      !startDate ||
-      !endDate
-    ) {
-      return res.status(400).json({
-        error:
-          "School year, trimester, name, start date, and end date are required",
-      });
-    }
+    const conflict = await findCalendarConflict(periodData);
+    if (conflict) return res.status(409).json({ error: conflict });
 
-    const period = await AcademicPeriod.create({
-      schoolYear,
-      trimester,
-      name,
-      startDate,
-      endDate,
-      status: status || "upcoming",
-    });
+    const period = await AcademicPeriod.create(periodData);
 
     res.status(201).json(period);
   } catch (error) {
@@ -72,6 +102,87 @@ router.post("/", async (req, res) => {
     res.status(500).json({
       error: "Failed to create academic period",
     });
+  }
+});
+
+router.patch("/:id", requireAdmin, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: "Invalid academic period ID" });
+    }
+    const periodData = validatePeriod(req.body || {});
+    if (periodData.error) return res.status(400).json({ error: periodData.error });
+
+    const period = await AcademicPeriod.findById(req.params.id);
+    if (!period) {
+      return res.status(404).json({ error: "Academic period not found" });
+    }
+
+    if (period.schoolYear !== periodData.schoolYear) {
+      const hasActivities = await Activity.exists({
+        academicPeriod: period._id,
+      });
+      if (hasActivities) {
+        return res.status(409).json({
+          error: "The school year cannot be changed after activities use this term",
+        });
+      }
+    }
+
+    const activitiesOutsideDates = await Activity.exists({
+      academicPeriod: period._id,
+      $or: [
+        { date: { $lt: periodData.startDate } },
+        { date: { $gt: periodData.endDate } },
+      ],
+    });
+    if (activitiesOutsideDates) {
+      return res.status(409).json({
+        error: "The new term dates would exclude existing activities",
+      });
+    }
+
+    const conflict = await findCalendarConflict(periodData, period._id);
+    if (conflict) return res.status(409).json({ error: conflict });
+
+    Object.assign(period, periodData);
+    await period.save();
+    return res.json(period);
+  } catch (error) {
+    console.error("Update academic period error:", error);
+    if (error.code === 11000) {
+      return res.status(409).json({
+        error: "This trimester already exists for this school year",
+      });
+    }
+    return res.status(500).json({ error: "Failed to update academic period" });
+  }
+});
+
+router.delete("/:id", requireAdmin, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: "Invalid academic period ID" });
+    }
+    const period = await AcademicPeriod.findById(req.params.id);
+    if (!period) {
+      return res.status(404).json({ error: "Academic period not found" });
+    }
+
+    const hasActivities = await Activity.exists({
+      academicPeriod: period._id,
+    });
+    if (hasActivities) {
+      return res.status(409).json({
+        error: "This academic period is used by activities and cannot be deleted",
+      });
+    }
+
+    await period.deleteOne();
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Delete academic period error:", error);
+    return res.status(500).json({ error: "Failed to delete academic period" });
   }
 });
 
