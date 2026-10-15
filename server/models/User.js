@@ -33,6 +33,24 @@ const userSchema = new mongoose.Schema(
       default: "active",
     },
 
+    contactNumber: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    address: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    birthdate: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
     // Password recovery (the token is stored hashed, never in plain text).
     // select: false keeps these out of normal queries, so they can never
     // leak into API responses such as the login payload.

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { User, Mail, Shield, Edit2, Save, X, Loader2, Calendar } from "lucide-react";
+import { User, Edit2, Save, X, Loader2 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 
@@ -21,7 +21,7 @@ export default function StudentProfile() {
     contactNumber: "",
   });
 
-  // Load existing profile data (S-007)
+  // Load existing profile data
   useEffect(() => {
     if (user) {
       setFormData({
@@ -41,16 +41,50 @@ export default function StudentProfile() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  // Save updated profile (S-006)
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setLoading(true);
+
+    const userId = user?._id || user?.id;
+
+    if (!userId) {
+      showToast("User ID not found. Please log in again.", "error");
+      setLoading(false);
+      return;
+    }
+
     try {
-      setLoading(true);
-      
-      // Call your backend/auth context update function here
-      if (updateUser) {
-        await updateUser(formData);
+      const token = localStorage.getItem("dnhs_token");
+
+      const response = await fetch("http://localhost:5000/api/users/me", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          userId: userId, // Pass userId so the backend can locate the account
+          name: formData.name,
+          address: formData.address,
+          birthdate: formData.birthdate,
+          contactNumber: formData.contactNumber,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to update profile.");
       }
+
+      // Sync state and localStorage
+      if (updateUser) {
+        updateUser(data);
+      }
+
+      const storedUser = JSON.parse(localStorage.getItem("dnhs_user") || "{}");
+      const updatedUser = { ...storedUser, ...data };
+      localStorage.setItem("dnhs_user", JSON.stringify(updatedUser));
 
       showToast("Profile updated successfully!", "success");
       setIsEditing(false);
@@ -78,9 +112,10 @@ export default function StudentProfile() {
             <div className="mt-3 h-1.5 w-16 rounded-full bg-amber-400 mx-auto md:mx-0" />
           </div>
 
-          {/* S-006: Edit Toggle Button */}
+          {/* Edit / Cancel Toggle Button */}
           {!isEditing ? (
             <button
+              type="button"
               onClick={() => setIsEditing(true)}
               className="flex items-center gap-2 rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-[#000052] shadow hover:bg-gray-100 transition"
             >
@@ -89,6 +124,7 @@ export default function StudentProfile() {
             </button>
           ) : (
             <button
+              type="button"
               onClick={() => setIsEditing(false)}
               className="flex items-center gap-2 rounded-xl bg-red-500/80 px-5 py-2.5 text-sm font-semibold text-white hover:bg-red-600 transition"
             >
@@ -134,7 +170,6 @@ export default function StudentProfile() {
               onChange={handleChange}
               placeholder="e.g. Kalasungay"
               className="mt-1 w-full rounded-lg border px-3.5 py-2.5 text-gray-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500"
-              required
             />
           </div>
 
@@ -148,7 +183,6 @@ export default function StudentProfile() {
               value={formData.birthdate}
               onChange={handleChange}
               className="mt-1 w-full rounded-lg border px-3.5 py-2.5 text-gray-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500"
-              required
             />
           </div>
 
@@ -178,7 +212,7 @@ export default function StudentProfile() {
           </div>
         </div>
 
-        {/* Save Changes Button (Appears only during Edit mode) */}
+        {/* Save Changes Button */}
         {isEditing && (
           <div className="flex justify-end border-t pt-4">
             <button
