@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Plus,
   ClipboardList,
@@ -20,6 +20,7 @@ import {
 function TeacherActivities() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { showToast } = useToast();
 
   const [classes, setClasses] = useState([]);
@@ -44,6 +45,7 @@ function TeacherActivities() {
     totalPoints: "",
     date: "",
   });
+  const requestedClassId = searchParams.get("classId");
 
   // --------------------------------------------------
   // Load teacher's classes
@@ -62,7 +64,13 @@ function TeacherActivities() {
         setClasses(data);
 
         if (data.length > 0) {
-          setSelectedClassId(data[0]._id);
+          const requestedClass = data.find(
+            (classItem) =>
+              String(classItem._id) === String(requestedClassId)
+          );
+          setSelectedClassId(
+            requestedClass?._id || data[0]._id
+          );
         }
       } catch (err) {
         console.error("Failed to load classes:", err);
@@ -77,7 +85,7 @@ function TeacherActivities() {
     };
 
     loadClasses();
-  }, [user?._id, showToast]);
+  }, [user?._id, showToast, requestedClassId]);
 
   // --------------------------------------------------
   // Load academic periods whenever class changes

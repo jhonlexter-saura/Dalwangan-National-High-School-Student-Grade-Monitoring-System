@@ -1,12 +1,21 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, UserPlus, Users } from "lucide-react";
-import { useNavigate, useParams } from "react-router-dom";
+import {
+  ArrowLeft,
+  BookOpen,
+  CalendarDays,
+  ChevronRight,
+  ClipboardList,
+  UserPlus,
+  Users,
+} from "lucide-react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { useAuth } from "../../context/AuthContext";
 import {
   getClasses,
   getStudents,
   addStudentToClassAsTeacher,
+  getActivitiesByClass,
 } from "../../services/schoolDataService";
 
 function TeacherClassDetails() {
@@ -16,11 +25,14 @@ function TeacherClassDetails() {
 
   const [classData, setClassData] = useState(null);
   const [students, setStudents] = useState([]);
+  const [activities, setActivities] = useState([]);
 
   const [selectedStudent, setSelectedStudent] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadingActivities, setLoadingActivities] = useState(true);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState("");
+  const [activitiesError, setActivitiesError] = useState("");
 
   const loadData = async () => {
     try {
@@ -53,6 +65,46 @@ function TeacherClassDetails() {
 
   useEffect(() => {
     loadData();
+  }, [classId]);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    const loadActivities = async () => {
+      if (!classId) {
+        setActivities([]);
+        setLoadingActivities(false);
+        return;
+      }
+
+      try {
+        setLoadingActivities(true);
+        setActivitiesError("");
+
+        const data = await getActivitiesByClass(classId);
+
+        if (isCurrent) {
+          setActivities(data || []);
+        }
+      } catch (err) {
+        console.error("Failed to load class activities:", err);
+        if (isCurrent) {
+          setActivitiesError(
+            err.message || "Failed to load class activities."
+          );
+        }
+      } finally {
+        if (isCurrent) {
+          setLoadingActivities(false);
+        }
+      }
+    };
+
+    loadActivities();
+
+    return () => {
+      isCurrent = false;
+    };
   }, [classId]);
 
   const enrolledStudentIds =
@@ -140,6 +192,135 @@ function TeacherClassDetails() {
           </p>
         </div>
       </div>
+
+      {/* Class Summary */}
+      <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="grid divide-y sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+          <SummaryItem
+            icon={<Users size={19} />}
+            label="Students"
+            value={classData.students?.length || 0}
+          />
+
+          <SummaryItem
+            icon={<ClipboardList size={19} />}
+            label="Activities"
+            value={activities.length}
+          />
+
+          <SummaryItem
+            icon={<CalendarDays size={19} />}
+            label="School Year"
+            value={classData.schoolYear || "—"}
+          />
+        </div>
+      </section>
+
+      {/* Quick Actions */}
+      <section>
+        <div className="mb-3">
+          <p className="text-xs font-semibold uppercase tracking-wider text-yellow-600">
+            Quick Actions
+          </p>
+
+          <h2 className="mt-1 text-lg font-bold text-blue-700">
+            Manage this class
+          </h2>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <QuickAction
+            to={`/teacher/activities?classId=${classId}`}
+            icon={<ClipboardList size={21} />}
+            title="Activities"
+            description="Create and manage activities for this class."
+          />
+
+          <QuickAction
+            to={`/teacher/scores?classId=${classId}`}
+            icon={<BookOpen size={21} />}
+            title="Scores"
+            description="Review and manage student scores."
+          />
+        </div>
+      </section>
+
+      {/* Recent Activities */}
+      <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="border-b border-gray-200 px-5 py-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-yellow-700">
+            Class Records
+          </p>
+
+          <h2 className="mt-1 text-lg font-bold text-blue-700">
+            Recent Activities
+          </h2>
+        </div>
+
+        {loadingActivities ? (
+          <div className="px-5 py-10 text-center text-sm text-gray-500">
+            Loading activities...
+          </div>
+        ) : activitiesError ? (
+          <div className="px-5 py-10 text-center text-sm text-red-500">
+            {activitiesError}
+          </div>
+        ) : activities.length > 0 ? (
+          <div className="divide-y">
+            {activities.slice(0, 5).map((activity) => (
+              <Link
+                key={activity._id}
+                to={`/teacher/scores?classId=${classId}&activityId=${activity._id}`}
+                className="flex items-center gap-4 px-5 py-4 transition hover:bg-gray-50"
+              >
+                <div className="rounded-lg bg-blue-50 p-2.5 text-blue-600">
+                  <ClipboardList size={18} />
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-gray-800">
+                    {activity.title}
+                  </p>
+
+                  <p className="mt-1 text-xs text-gray-500">
+                    {activity.type || "Activity"}
+                    {activity.totalPoints
+                      ? ` · ${activity.totalPoints} points`
+                      : ""}
+                  </p>
+                </div>
+
+                <ChevronRight
+                  size={18}
+                  className="shrink-0 text-gray-400"
+                />
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="px-5 py-10 text-center">
+            <ClipboardList
+              size={36}
+              className="mx-auto text-gray-300"
+            />
+
+            <p className="mt-3 text-sm font-medium text-gray-700">
+              No activities yet
+            </p>
+
+            <p className="mt-1 text-xs text-gray-500">
+              Create an activity for this class to see it here.
+            </p>
+
+            <Link
+              to={`/teacher/activities?classId=${classId}`}
+              className="mt-4 inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              Create Activity
+            </Link>
+          </div>
+        )}
+      </section>
 
       {/* Error */}
       {error && (
@@ -253,6 +434,56 @@ function TeacherClassDetails() {
         )}
       </div>
     </div>
+  );
+}
+
+function SummaryItem({ icon, label, value }) {
+  return (
+    <div className="flex items-center gap-3 px-5 py-4">
+      <div className="rounded-lg bg-blue-50 p-2 text-blue-600">
+        {icon}
+      </div>
+
+      <div className="min-w-0">
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
+          {label}
+        </p>
+
+        <p className="mt-1 truncate text-sm font-semibold text-gray-800">
+          {value}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function QuickAction({ to, icon, title, description }) {
+  return (
+    <Link
+      to={to}
+      className="group flex items-start gap-4 rounded-xl border bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md"
+    >
+      <div className="rounded-lg bg-blue-50 p-3 text-blue-600 transition group-hover:bg-blue-100">
+        {icon}
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="font-semibold text-gray-800 group-hover:text-blue-600">
+            {title}
+          </h3>
+
+          <ChevronRight
+            size={17}
+            className="shrink-0 text-gray-300 transition group-hover:translate-x-0.5 group-hover:text-blue-500"
+          />
+        </div>
+
+        <p className="mt-1 text-sm leading-5 text-gray-500">
+          {description}
+        </p>
+      </div>
+    </Link>
   );
 }
 

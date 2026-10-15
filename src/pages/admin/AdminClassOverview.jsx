@@ -5,7 +5,6 @@ import {
   ClipboardList,
   Users,
   BookOpen,
-  UserPlus,
   CalendarDays,
   ChevronRight,
 } from "lucide-react";
@@ -17,7 +16,7 @@ function AdminClassOverview() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const { classes } = useSchoolData();
+  const { classes, loading } = useSchoolData();
 
   const [activities, setActivities] = useState([]);
   const [loadingActivities, setLoadingActivities] = useState(true);
@@ -56,6 +55,14 @@ function AdminClassOverview() {
   }, [id]);
 
   if (!selectedClass) {
+    if (loading) {
+      return (
+        <div className="rounded-xl border bg-white p-10 text-center text-sm text-gray-500 shadow-sm">
+          Loading class...
+        </div>
+      );
+    }
+
     return (
       <div className="space-y-6">
         <button
@@ -186,19 +193,12 @@ function AdminClassOverview() {
           </h2>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2">
           <QuickAction
             to={`/admin/activities?classId=${selectedClass.id}`}
             icon={<ClipboardList size={21} />}
             title="Activities"
             description="Create and manage activities for this class."
-          />
-
-          <QuickAction
-            to={`/admin/classes/${selectedClass.id}/students`}
-            icon={<Users size={21} />}
-            title="Students"
-            description="View and manage students in this class."
           />
 
           <QuickAction
@@ -296,6 +296,49 @@ function AdminClassOverview() {
             >
               Create Activity
             </Link>
+          </div>
+        )}
+      </section>
+
+      <section className="overflow-hidden rounded-xl border bg-white shadow-sm">
+        <div className="flex items-center gap-3 border-b px-5 py-4">
+          <Users size={20} className="text-blue-600" />
+          <div>
+            <h2 className="text-lg font-bold text-blue-700">
+              Students
+            </h2>
+          </div>
+        </div>
+
+        {students.length > 0 ? (
+          <div className="divide-y">
+            {students.map((student, index) => (
+              <div
+                key={student._id || student.id || index}
+                className="flex flex-col gap-1 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">
+                    {student.name}
+                  </p>
+                  {student.studentId && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      {student.studentId}
+                    </p>
+                  )}
+                </div>
+
+                {student.email && (
+                  <p className="text-sm text-gray-500">
+                    {student.email}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="px-5 py-10 text-center text-sm text-gray-500">
+            No students in this class yet.
           </div>
         )}
       </section>

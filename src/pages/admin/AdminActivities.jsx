@@ -14,7 +14,7 @@ import { useToast } from "../../context/ToastContext";
 import { getAcademicPeriods } from "../../services/schoolDataService";
 
 function AdminActivities() {
-  const { classes, activities, createActivity } = useSchoolData();
+  const { classes, activities, createActivity, loading } = useSchoolData();
   const { showToast } = useToast();
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -57,6 +57,7 @@ function AdminActivities() {
   // --------------------------------------------------
 
   useEffect(() => {
+    if (loading) return;
     if (!classes.length) return;
 
     const valid = classes.some(
@@ -70,7 +71,7 @@ function AdminActivities() {
         { replace: true }
       );
     }
-  }, [classes, urlClassId, setSearchParams]);
+  }, [classes, loading, urlClassId, setSearchParams]);
 
   // --------------------------------------------------
   // Load academic periods

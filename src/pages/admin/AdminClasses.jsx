@@ -9,10 +9,9 @@ import {
 } from "lucide-react";
 
 import { useToast } from "../../context/ToastContext";
+import { useSchoolData } from "../../context/SchoolDataContext";
 
 import {
-  getClasses,
-  createClass,
   getTeachers,
   addStudentToClass,
 } from "../../services/schoolDataService";
@@ -20,11 +19,10 @@ import {
 function AdminClasses() {
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { classes, loading, createClass, reloadData } = useSchoolData();
 
-  const [classes, setClasses] = useState([]);
   const [teachers, setTeachers] = useState([]);
 
-  const [loading, setLoading] = useState(true);
   const [loadingTeachers, setLoadingTeachers] = useState(false);
 
   // Modals
@@ -69,29 +67,6 @@ function AdminClasses() {
   );
 
   // --------------------------------------------------
-  // LOAD CLASSES
-  // --------------------------------------------------
-
-  const loadClasses = async () => {
-    try {
-      setLoading(true);
-
-      const data = await getClasses();
-
-      setClasses(data);
-    } catch (error) {
-      console.error("Failed to load classes:", error);
-
-      showToast(
-        error.message || "Failed to load classes.",
-        "error"
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // --------------------------------------------------
   // LOAD TEACHERS
   // --------------------------------------------------
 
@@ -115,7 +90,6 @@ function AdminClasses() {
   };
 
   useEffect(() => {
-    loadClasses();
     loadTeachers();
   }, []);
 
@@ -279,7 +253,7 @@ function AdminClasses() {
           : [],
       };
 
-      const createdClass = await createClass({
+      await createClass({
         name: classForm.name.trim(),
         section: classForm.section.trim(),
         gradeLevel: Number(classForm.gradeLevel),
@@ -292,10 +266,7 @@ function AdminClasses() {
         gradingSystem,
       });
 
-      setClasses((prev) => [
-        createdClass,
-        ...prev,
-      ]);
+      await reloadData();
 
       setShowClassModal(false);
 
@@ -383,7 +354,7 @@ function AdminClasses() {
       );
 
       // Refresh classes from MongoDB
-      await loadClasses();
+      await reloadData();
 
       setShowInviteModal(false);
       setSelectedClassId(null);
@@ -502,9 +473,7 @@ function AdminClasses() {
                 <button
                   type="button"
                   onClick={() =>
-                    navigate(
-                      `/admin/activities?classId=${classId}`
-                    )
+                    navigate(`/admin/classes/${classId}`)
                   }
                   className="block w-full text-left focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                 >
