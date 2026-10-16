@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { User, Edit2, Save, X, Loader2 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
+import { updateMyProfile } from "../../services/schoolDataService";
 
 export default function StudentProfile() {
   const { user, updateUser } = useAuth();
@@ -41,59 +42,31 @@ export default function StudentProfile() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
+  
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setLoading(true);
 
-    const userId = user?._id || user?.id;
+  try {
+    const data = await updateMyProfile({
+      name: formData.name.trim(),
+      address: formData.address.trim(),
+      birthdate: formData.birthdate,
+      contactNumber: formData.contactNumber.trim(),
+    });
 
-    if (!userId) {
-      showToast("User ID not found. Please log in again.", "error");
-      setLoading(false);
-      return;
-    }
+    // AuthContext handles syncing the current user to localStorage.
+    updateUser?.(data);
 
-    try {
-      const token = localStorage.getItem("dnhs_token");
-
-      const response = await fetch("http://localhost:5000/api/users/me", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          userId: userId, // Pass userId so the backend can locate the account
-          name: formData.name,
-          address: formData.address,
-          birthdate: formData.birthdate,
-          contactNumber: formData.contactNumber,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to update profile.");
-      }
-
-      // Sync state and localStorage
-      if (updateUser) {
-        updateUser(data);
-      }
-
-      const storedUser = JSON.parse(localStorage.getItem("dnhs_user") || "{}");
-      const updatedUser = { ...storedUser, ...data };
-      localStorage.setItem("dnhs_user", JSON.stringify(updatedUser));
-
-      showToast("Profile updated successfully!", "success");
-      setIsEditing(false);
-    } catch (err) {
-      showToast(err.message || "Failed to update profile", "error");
-    } finally {
-      setLoading(false);
-    }
-  };
+    showToast("Profile updated successfully!", "success");
+    setIsEditing(false);
+  } catch (err) {
+    console.error("Student profile update failed:", err);
+    showToast(err.message || "Failed to update profile.", "error");
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-6">

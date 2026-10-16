@@ -1,4 +1,3 @@
-
 const express = require("express");
 const bcrypt = require("bcrypt");
 const mongoose = require("mongoose");
@@ -322,6 +321,9 @@ router.patch("/me", requireAuth, async (req, res) => {
     }
 
     const allowedFields = new Set(PROFILE_FIELDS);
+    if (req.authenticatedUser.role === "student") {
+    allowedFields.add("name");
+    }
     const unsupportedFields = Object.keys(req.body).filter(
       (field) => !allowedFields.has(field)
     );
@@ -340,17 +342,17 @@ router.patch("/me", requireAuth, async (req, res) => {
       });
     }
 
-    for (const field of PROFILE_FIELDS) {
-      if (Object.hasOwn(req.body, field)) {
-        if (typeof req.body[field] !== "string") {
-          return res.status(400).json({
-            error: `${field} must be a string`,
-          });
-        }
+    for (const field of allowedFields) {
+    if (!Object.hasOwn(req.body, field)) continue;
 
-        user[field] = req.body[field].trim();
-      }
+    if (typeof req.body[field] !== "string") {
+      return res.status(400).json({
+        error: `${field} must be a string`,
+      });
     }
+
+    user[field] = req.body[field].trim();
+  }
 
     // Keep the legacy name field for older pages and existing records.
     user.name = composeName(user, user.name || "");
