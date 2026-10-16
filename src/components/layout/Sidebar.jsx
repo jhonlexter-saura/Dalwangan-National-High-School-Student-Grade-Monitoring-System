@@ -6,6 +6,7 @@ import {
   GraduationCap,
   UserPlus,
   UserCog,
+  Users,
   ShieldPlus,
   Settings,
   X,
@@ -154,6 +155,14 @@ function Sidebar({ isOpen, onClose }) {
               <SectionLabel className="mt-8">Account Management</SectionLabel>
 
               <div className="space-y-1">
+                <NavItem
+                  to="/admin/accounts"
+                  end
+                  icon={<Users size={20} />}
+                  label="All User Accounts"
+                  onClick={onClose}
+                />
+
                 <NavItem
                   to="/admin/academic-calendar"
                   icon={<CalendarDays size={20} />}

@@ -246,8 +246,8 @@ router.post("/", requireAdmin, async (req, res) => {
   }
 });
 
-// GET USERS (existing endpoint)
-router.get("/", async (req, res) => {
+// GET USERS (Admin only)
+router.get("/", requireAdmin, async (req, res) => {
   try {
     const filter = {};
     if (req.query.role) filter.role = req.query.role;
@@ -409,8 +409,8 @@ router.patch("/me", requireAuth, async (req, res) => {
   }
 });
 
-// GET USER BY ID (existing endpoint)
-router.get("/:id", async (req, res) => {
+// GET USER BY ID (Admin only)
+router.get("/:id", requireAdmin, async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) {
       return res.status(400).json({ error: "Invalid user ID" });

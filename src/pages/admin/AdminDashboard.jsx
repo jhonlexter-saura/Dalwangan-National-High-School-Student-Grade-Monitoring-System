@@ -6,10 +6,12 @@ import {
   GraduationCap,
   Users,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { useAuth } from "../../context/AuthContext";
 import { useSchoolData } from "../../context/SchoolDataContext";
+import { getUsers } from "../../services/schoolDataService";
 
 const summaryCards = [
   {
@@ -44,6 +46,14 @@ const summaryCards = [
     accent: "blue",
     href: "/admin/scores",
   },
+  {
+    key: "accounts",
+    label: "User Accounts",
+    description: "Students, teachers, and administrators",
+    icon: Users,
+    accent: "red",
+    href: "/admin/accounts",
+  },
 ];
 
 const accentStyles = {
@@ -64,6 +74,24 @@ const accentStyles = {
 function AdminDashboard() {
   const { user } = useAuth();
   const { classes, activities, scores } = useSchoolData();
+  const [accounts, setAccounts] = useState([]);
+  const [accountsLoading, setAccountsLoading] = useState(true);
+  const [accountsError, setAccountsError] = useState("");
+
+  useEffect(() => {
+    const loadAccounts = async () => {
+      try {
+        setAccounts(await getUsers());
+      } catch (error) {
+        console.error("Failed to load account summary:", error);
+        setAccountsError(error.message || "Unable to load accounts.");
+      } finally {
+        setAccountsLoading(false);
+      }
+    };
+
+    loadAccounts();
+  }, []);
 
   const totalStudents = classes.reduce(
     (total, classItem) => total + classItem.students.length,
@@ -75,7 +103,16 @@ function AdminDashboard() {
     students: totalStudents,
     activities: activities.length,
     records: scores.length,
+    accounts: accounts.length,
   };
+
+  const accountSummary = ["student", "teacher", "admin"]
+    .map((role) => {
+      const count = accounts.filter((account) => account.role === role).length;
+      const label = role === "admin" ? "admins" : `${role}s`;
+      return `${count} ${label}`;
+    })
+    .join(" · ");
 
   const getClassName = (classId) =>
     classes.find((classItem) => classItem.id === classId)?.name ||
@@ -100,7 +137,7 @@ function AdminDashboard() {
         </div>
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {summaryCards.map((card) => {
           const Icon = card.icon;
           const style = accentStyles[card.accent];
@@ -118,10 +155,16 @@ function AdminDashboard() {
                     {card.label}
                   </p>
                   <p className="mt-3 text-3xl font-bold text-blue-700">
-                    {totals[card.key]}
+                    {card.key === "accounts" && accountsLoading
+                      ? "..."
+                      : card.key === "accounts" && accountsError
+                        ? "—"
+                        : totals[card.key]}
                   </p>
                   <p className="mt-1 text-sm text-gray-500">
-                    {card.description}
+                    {card.key === "accounts"
+                      ? accountsError || (accountsLoading ? card.description : accountSummary)
+                      : card.description}
                   </p>
                 </div>
                 <div className={`rounded-lg p-3 ${style.icon}`}>

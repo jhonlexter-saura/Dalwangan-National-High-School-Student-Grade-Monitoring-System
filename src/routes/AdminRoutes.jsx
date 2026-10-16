@@ -14,6 +14,7 @@ import AdminAccountCreate from "../pages/admin/AdminAccountCreate";
 import AdminAccounts from "../pages/admin/AdminAccounts";
 import AdminUserEdit from "../pages/admin/AdminUserEdit";
 import AdminAcademicCalendar from "../pages/admin/AdminAcademicCalendar";
+import AdminAllAccounts from "../pages/admin/AdminAllAccounts";
 
 const adminRoutes = [
   {
@@ -47,6 +48,10 @@ const adminRoutes = [
   {
     path: "/admin/academic-calendar",
     element: <AdminAcademicCalendar />,
+  },
+  {
+    path: "/admin/accounts",
+    element: <AdminAllAccounts />,
   },
   {
     path: "/admin/accounts/students/create",
