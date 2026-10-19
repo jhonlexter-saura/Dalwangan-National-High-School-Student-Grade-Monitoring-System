@@ -10,8 +10,6 @@ import {
 
 const emptyForm = {
   schoolYear: "",
-  trimester: "1",
-  name: "Trimester 1",
   startDate: "",
   endDate: "",
   status: "upcoming",
@@ -19,6 +17,17 @@ const emptyForm = {
 
 const inputClassName =
   "w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
+
+function getCurrentSchoolYear() {
+  const year = new Date().getFullYear();
+  return `${year}-${year + 1}`;
+}
+
+function getSchoolYearRecord(periods, schoolYear) {
+  return periods
+    .filter((period) => period.schoolYear === schoolYear)
+    .sort((a, b) => Number(a.trimester) - Number(b.trimester))[0];
+}
 
 function dateLabel(value) {
   if (!value) return "—";
@@ -33,25 +42,22 @@ export default function AdminAcademicCalendar() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [editingId, setEditingId] = useState("");
-  const [formData, setFormData] = useState(emptyForm);
-
+  const [formData, setFormData] = useState(() => ({
+    ...emptyForm,
+    schoolYear: getCurrentSchoolYear(),
+  }));
   const schoolYears = useMemo(
     () => [...new Set(periods.map((period) => period.schoolYear))].sort().reverse(),
     [periods]
   );
-  const usedTrimesters = useMemo(
-    () =>
-      new Set(
-        periods
-          .filter(
-            (period) =>
-              period.schoolYear === formData.schoolYear &&
-              period._id !== editingId
-          )
-          .map((period) => Number(period.trimester))
-      ),
-    [periods, formData.schoolYear, editingId]
-  );
+  const schoolYearOptions = useMemo(() => {
+    const year = new Date().getFullYear();
+    const generatedYears = Array.from(
+      { length: 5 },
+      (_, index) => `${year + index}-${year + index + 1}`
+    );
+    return [...new Set([...schoolYears, ...generatedYears])].sort().reverse();
+  }, [schoolYears]);
   const groupedPeriods = useMemo(
     () =>
       periods.reduce((groups, period) => {
@@ -66,7 +72,22 @@ export default function AdminAcademicCalendar() {
     let mounted = true;
     getAcademicPeriods()
       .then((data) => {
-        if (mounted) setPeriods(data);
+        if (mounted) {
+          setPeriods(data);
+          const currentYearRecord = getSchoolYearRecord(
+            data,
+            getCurrentSchoolYear()
+          );
+          if (currentYearRecord) {
+            setEditingId(currentYearRecord._id);
+            setFormData({
+              schoolYear: currentYearRecord.schoolYear,
+              startDate: currentYearRecord.startDate.slice(0, 10),
+              endDate: currentYearRecord.endDate.slice(0, 10),
+              status: currentYearRecord.status,
+            });
+          }
+        }
       })
       .catch((loadError) => {
         console.error("Failed to load the school-year calendar:", loadError);
@@ -96,19 +117,24 @@ export default function AdminAcademicCalendar() {
 
   const resetForm = () => {
     setEditingId("");
-    setFormData(emptyForm);
+    setFormData({ ...emptyForm, schoolYear: getCurrentSchoolYear() });
     setError("");
   };
 
   const handleChange = (event) => {
     const { name, value } = event.target;
-    setFormData((current) => ({
-      ...current,
-      [name]: value,
-      ...(name === "trimester" && !editingId
-        ? { name: `Trimester ${value}` }
-        : {}),
-    }));
+    if (name === "schoolYear") {
+      const yearRecord = getSchoolYearRecord(periods, value);
+      setEditingId(yearRecord?._id || "");
+      setFormData({
+        schoolYear: value,
+        startDate: yearRecord?.startDate.slice(0, 10) || "",
+        endDate: yearRecord?.endDate.slice(0, 10) || "",
+        status: yearRecord?.status || "upcoming",
+      });
+      return;
+    }
+    setFormData((current) => ({ ...current, [name]: value }));
   };
 
   const handleEdit = (period) => {
@@ -116,8 +142,6 @@ export default function AdminAcademicCalendar() {
     setEditingId(period._id);
     setFormData({
       schoolYear: period.schoolYear,
-      trimester: String(period.trimester),
-      name: period.name,
       startDate: period.startDate.slice(0, 10),
       endDate: period.endDate.slice(0, 10),
       status: period.status,
@@ -128,8 +152,8 @@ export default function AdminAcademicCalendar() {
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError("");
-    if (!formData.schoolYear.trim() || !formData.name.trim()) {
-      setError("School year and term name are required.");
+    if (!formData.schoolYear.trim()) {
+      setError("School year is required.");
       return;
     }
     if (
@@ -141,42 +165,47 @@ export default function AdminAcademicCalendar() {
       return;
     }
 
+    const existingRecord =
+      periods.find((period) => period._id === editingId) ||
+      getSchoolYearRecord(periods, formData.schoolYear);
     const data = {
-      ...formData,
       schoolYear: formData.schoolYear.trim(),
-      name: formData.name.trim(),
-      trimester: Number(formData.trimester),
+      name: existingRecord?.name || `School Year ${formData.schoolYear.trim()}`,
+      trimester: existingRecord?.trimester || 1,
+      startDate: formData.startDate,
+      endDate: formData.endDate,
+      status: formData.status,
     };
     try {
       setSaving(true);
-      if (editingId) {
-        await updateAcademicPeriod(editingId, data);
-        showToast("Term updated successfully.", "success");
+      if (existingRecord) {
+        await updateAcademicPeriod(existingRecord._id, data);
+        showToast("School year updated successfully.", "success");
       } else {
         await createAcademicPeriod(data);
-        showToast("Term added to the school-year calendar.", "success");
+        showToast("School year added to the calendar.", "success");
       }
       resetForm();
       await loadPeriods();
     } catch (saveError) {
-      console.error("Failed to save academic period:", saveError);
-      setError(saveError.message || "Failed to save the term.");
+      console.error("Failed to save school year:", saveError);
+      setError(saveError.message || "Failed to save the school year.");
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = async (period) => {
-    if (!window.confirm(`Delete ${period.name} for ${period.schoolYear}?`)) return;
+    if (!window.confirm(`Delete the calendar entry for ${period.schoolYear}?`)) return;
     try {
       setError("");
       await deleteAcademicPeriod(period._id);
       if (editingId === period._id) resetForm();
-      showToast("Term deleted.", "success");
+      showToast("School year deleted.", "success");
       await loadPeriods();
     } catch (deleteError) {
-      console.error("Failed to delete academic period:", deleteError);
-      setError(deleteError.message || "Failed to delete the term.");
+      console.error("Failed to delete school year:", deleteError);
+      setError(deleteError.message || "Failed to delete the school year.");
     }
   };
 
@@ -185,7 +214,7 @@ export default function AdminAcademicCalendar() {
       <header>
         <h1 className="text-2xl font-bold text-gray-900">School Year Calendar</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Set school years, trimester dates, and the current active term.
+          Set school years, start and end dates, and status.
         </p>
       </header>
 
@@ -196,11 +225,8 @@ export default function AdminAcademicCalendar() {
           </div>
           <div>
             <h2 className="font-semibold text-gray-900">
-              {editingId ? "Edit term" : "Set up a school year term"}
+              {editingId ? "Edit school year" : "Set up a school year"}
             </h2>
-            <p className="text-sm text-gray-500">
-              Each school year supports up to three non-overlapping trimesters.
-            </p>
           </div>
         </div>
 
@@ -213,34 +239,21 @@ export default function AdminAcademicCalendar() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="School year">
-              <input
+              <select
                 className={inputClassName}
                 name="schoolYear"
-                list="school-year-options"
-                placeholder="2026-2027"
                 value={formData.schoolYear}
                 onChange={handleChange}
                 required
-              />
-              <datalist id="school-year-options">
-                {schoolYears.map((schoolYear) => (
-                  <option key={schoolYear} value={schoolYear} />
-                ))}
-              </datalist>
-            </Field>
-            <Field label="Term">
-              <select className={inputClassName} name="trimester" value={formData.trimester} onChange={handleChange} required>
-                {[1, 2, 3].map((trimester) => (
-                  <option key={trimester} value={trimester} disabled={usedTrimesters.has(trimester)}>
-                    Trimester {trimester}
+              >
+                {schoolYearOptions.map((schoolYear) => (
+                  <option key={schoolYear} value={schoolYear}>
+                    {schoolYear}
                   </option>
                 ))}
               </select>
             </Field>
           </div>
-          <Field label="Term name">
-            <input className={inputClassName} name="name" value={formData.name} onChange={handleChange} placeholder="First Trimester" required />
-          </Field>
           <div className="grid gap-4 sm:grid-cols-3">
             <Field label="Start date">
               <input className={inputClassName} type="date" name="startDate" value={formData.startDate} onChange={handleChange} required />
@@ -259,7 +272,7 @@ export default function AdminAcademicCalendar() {
           <div className="flex flex-wrap gap-3 pt-1">
             <button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
               {editingId ? <Save size={17} /> : <Plus size={17} />}
-              {saving ? "Saving..." : editingId ? "Save changes" : "Add term"}
+              {saving ? "Saving..." : editingId ? "Save changes" : "Add school year"}
             </button>
             {editingId && (
               <button type="button" onClick={resetForm} disabled={saving} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
@@ -272,13 +285,13 @@ export default function AdminAcademicCalendar() {
 
       <section className="space-y-4">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">Calendar terms</h2>
-          <p className="text-sm text-gray-500">Terms already used by activities cannot be removed.</p>
+          <h2 className="text-lg font-semibold text-gray-900">Calendar school years</h2>
+          <p className="text-sm text-gray-500">School years already used by activities cannot be removed.</p>
         </div>
         {loading ? (
           <div className="rounded-xl border bg-white p-8 text-center text-sm text-gray-500">Loading calendar...</div>
         ) : Object.keys(groupedPeriods).length === 0 ? (
-          <div className="rounded-xl border bg-white p-8 text-center text-sm text-gray-500">No terms have been set up yet.</div>
+          <div className="rounded-xl border bg-white p-8 text-center text-sm text-gray-500">No school years have been set up yet.</div>
         ) : (
           Object.keys(groupedPeriods).sort().reverse().map((schoolYear) => (
             <div key={schoolYear} className="overflow-hidden rounded-xl border bg-white shadow-sm">
@@ -288,8 +301,7 @@ export default function AdminAcademicCalendar() {
                   <div key={period._id} className="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <h4 className="font-medium text-gray-900">{period.name}</h4>
-                        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">Trimester {period.trimester}</span>
+                        <h4 className="font-medium text-gray-900">School Year {period.schoolYear}</h4>
                         <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${period.status === "active" ? "bg-green-100 text-green-700" : period.status === "completed" ? "bg-gray-100 text-gray-600" : "bg-amber-100 text-amber-700"}`}>
                           {period.status}
                         </span>
