@@ -244,3 +244,10 @@ export async function updateMyProfile(profileData) {
     body: JSON.stringify(profileData),
   });
 }
+
+export function loginWithGoogle(credential) {
+  return request("/auth/google", {
+    method: "POST",
+    body: JSON.stringify({ credential }),
+  });
+}

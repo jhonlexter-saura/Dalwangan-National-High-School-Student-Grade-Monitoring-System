@@ -6,7 +6,10 @@ import {
   useState,
 } from "react";
 
-import { loginUser } from "../services/schoolDataService";
+import {
+  loginUser,
+  loginWithGoogle as googleLoginRequest,
+} from "../services/schoolDataService";
 
 const AuthContext = createContext(null);
 
@@ -17,6 +20,7 @@ export function AuthProvider({ children }) {
 
     if (!savedUser || !token) {
       localStorage.removeItem("dnhs_user");
+      localStorage.removeItem("dnhs_token");
       return null;
     }
 
@@ -34,29 +38,48 @@ export function AuthProvider({ children }) {
       if (!currentUser) return currentUser;
 
       const nextUser = { ...currentUser, ...updates };
-
       localStorage.setItem("dnhs_user", JSON.stringify(nextUser));
 
       return nextUser;
     });
   }, []);
 
-  const login = async (email, password) => {
+  const establishSession = useCallback((result) => {
+    setUser(result.user);
+    localStorage.setItem("dnhs_token", result.token);
+    localStorage.setItem("dnhs_user", JSON.stringify(result.user));
+
+    return {
+      success: true,
+      user: result.user,
+    };
+  }, []);
+
+  const login = async (email, password, captchaToken) => {
     try {
-      const result = await loginUser({ email, password });
+      const result = await loginUser({
+        email,
+        password,
+        captchaToken,
+      });
 
-      setUser(result.user);
-      localStorage.setItem("dnhs_token", result.token);
-      localStorage.setItem("dnhs_user", JSON.stringify(result.user));
-
-      return {
-        success: true,
-        user: result.user,
-      };
+      return establishSession(result);
     } catch (error) {
       return {
         success: false,
-        message: error.message,
+        message: error.message || "Login failed.",
+      };
+    }
+  };
+
+  const loginWithGoogle = async (credential) => {
+    try {
+      const result = await googleLoginRequest(credential);
+      return establishSession(result);
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || "Google sign-in failed.",
       };
     }
   };
@@ -72,6 +95,7 @@ export function AuthProvider({ children }) {
       value={{
         user,
         login,
+        loginWithGoogle,
         logout,
         updateUser,
       }}
