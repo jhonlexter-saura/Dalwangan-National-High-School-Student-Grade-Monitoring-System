@@ -2,6 +2,10 @@ const express = require("express");
 const bcrypt = require("bcrypt");
 const crypto = require("crypto");
 
+const { OAuth2Client } = require("google-auth-library");
+
+const googleClient = new OAuth2Client();
+
 const User = require("../models/User");
 const {
   createAccessToken,
@@ -26,6 +30,43 @@ function hashToken(token) {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
 
+async function verifyRecaptcha(captchaToken, remoteIp) {
+  if (!process.env.RECAPTCHA_SECRET_KEY) {
+    throw new Error("RECAPTCHA_NOT_CONFIGURED");
+  }
+
+  if (typeof captchaToken !== "string" || !captchaToken) {
+    return false;
+  }
+
+  const params = new URLSearchParams({
+    secret: process.env.RECAPTCHA_SECRET_KEY,
+    response: captchaToken,
+  });
+
+  if (remoteIp) {
+    params.set("remoteip", remoteIp);
+  }
+
+  const response = await fetch(
+    "https://www.google.com/recaptcha/api/siteverify",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: params,
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("RECAPTCHA_VERIFICATION_UNAVAILABLE");
+  }
+
+  const result = await response.json();
+  return result.success === true;
+}
+
 router.post("/login", async (req, res) => {
   try {
     if (!isAuthenticationConfigured()) {
@@ -34,9 +75,41 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    const { email, password } = req.body;
+    let captchaValid;
 
-    if (!email || !password) {
+    try {
+      captchaValid = await verifyRecaptcha(
+        req.body?.captchaToken,
+        req.ip
+      );
+    } catch (error) {
+      if (error.message === "RECAPTCHA_NOT_CONFIGURED") {
+        return res.status(503).json({
+          error: "reCAPTCHA is not configured on this server",
+        });
+      }
+
+      console.error("reCAPTCHA verification unavailable:", error.message);
+
+      return res.status(503).json({
+        error: "Unable to verify reCAPTCHA. Please try again.",
+      });
+    }
+
+    if (!captchaValid) {
+      return res.status(403).json({
+        error: "Please complete the reCAPTCHA challenge again.",
+      });
+    }
+
+    const { email, password } = req.body || {};
+
+    if (
+      typeof email !== "string" ||
+      !email.trim() ||
+      typeof password !== "string" ||
+      !password
+    ) {
       return res.status(400).json({
         error: "Email and password are required",
       });
@@ -44,9 +117,7 @@ router.post("/login", async (req, res) => {
 
     const normalizedEmail = email.trim().toLowerCase();
 
-    const user = await User.findOne({
-      email: normalizedEmail,
-    });
+    const user = await User.findOne({ email: normalizedEmail });
 
     if (!user) {
       return res.status(401).json({
@@ -71,23 +142,103 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    const safeUser = user.toObject();
-
-    delete safeUser.password;
-
-    res.json({
+    return res.json({
       success: true,
-      user: safeUser,
+      user: safeUser(user),
       token: createAccessToken(user._id),
     });
   } catch (error) {
     console.error("Login error:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       error: "Login failed",
     });
   }
 });
+
+function safeUser(user) {
+  const result = user.toObject();
+
+  delete result.password;
+  delete result.resetPasswordToken;
+  delete result.resetPasswordExpires;
+
+  return result;
+}
+
+
+router.post("/google", async (req, res) => {
+  try {
+    if (!isAuthenticationConfigured()) {
+      return res.status(503).json({
+        error: "Authentication is not configured on this server",
+      });
+    }
+
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+
+    if (!clientId) {
+      return res.status(503).json({
+        error: "Google sign-in is not configured on this server",
+      });
+    }
+
+    const { credential } = req.body || {};
+
+    if (typeof credential !== "string" || !credential) {
+      return res.status(400).json({
+        error: "Google credential is required",
+      });
+    }
+
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: clientId,
+    });
+
+    const payload = ticket.getPayload();
+
+    if (
+      !payload ||
+      !payload.email ||
+      payload.email_verified !== true
+    ) {
+      return res.status(401).json({
+        error: "Google account verification failed",
+      });
+    }
+
+    const email = payload.email.trim().toLowerCase();
+
+    // Google sign-in cannot create or assign an account or role.
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(403).json({
+        error: "No existing DNHS-SGMS account matches this Google email.",
+      });
+    }
+
+    if (user.status !== "active") {
+      return res.status(403).json({
+        error: "This account is inactive.",
+      });
+    }
+
+    return res.json({
+      success: true,
+      user: safeUser(user),
+      token: createAccessToken(user._id),
+    });
+  } catch (error) {
+    console.error("Google sign-in error:", error.message);
+
+    return res.status(401).json({
+      error: "Google sign-in could not be verified. Please try again.",
+    });
+  }
+});
+
 
 // -----------------------------
 // Password recovery

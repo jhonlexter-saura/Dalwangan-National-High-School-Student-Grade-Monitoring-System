@@ -113,13 +113,30 @@ router.post("/", async (req, res) => {
       date,
     } = req.body;
 
+    const defaultCategoryByType = {
+      quiz: "written_work",
+      assignment: "written_work",
+      project: "performance_task",
+      performance_task: "performance_task",
+      exam: "assessment",
+      activity: "written_work",
+    };
+
+    const resolvedGradingCategory =
+      gradingCategory || defaultCategoryByType[type];
+
+    if (!resolvedGradingCategory) {
+      return res.status(400).json({
+        error: "A valid grading category is required",
+      });
+    }
+
     // Validate required fields
     if (
       !title?.trim() ||
       !classId ||
       !academicPeriodId ||
       !type ||
-      !gradingCategory ||
       totalPoints === undefined ||
       totalPoints === null ||
       totalPoints === "" ||
@@ -127,7 +144,7 @@ router.post("/", async (req, res) => {
     ) {
       return res.status(400).json({
         error:
-          "Title, class, academic period, type, grading category, total points, and date are required",
+          "Title, class, academic period, type, total points, and date are required",
       });
     }
 
@@ -177,7 +194,7 @@ router.post("/", async (req, res) => {
       class: classId,
       academicPeriod: academicPeriodId,
       type,
-      gradingCategory,
+      gradingCategory: resolvedGradingCategory,
       totalPoints: points,
       date,
     });
