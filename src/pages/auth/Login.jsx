@@ -246,10 +246,6 @@ function Login() {
           </p>
         </>
       )}
-
-        <p className="mt-4 text-center text-xs text-gray-500">
-          Google sign-in is available only for existing, active DNHS-SGMS accounts.
-        </p>
       </div>
     </div>
   );
