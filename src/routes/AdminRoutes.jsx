@@ -15,6 +15,7 @@ import AdminAccounts from "../pages/admin/AdminAccounts";
 import AdminUserEdit from "../pages/admin/AdminUserEdit";
 import AdminAcademicCalendar from "../pages/admin/AdminAcademicCalendar";
 import AdminAllAccounts from "../pages/admin/AdminAllAccounts";
+import AdminIntegrations from "../pages/admin/AdminIntegrations";
 
 const adminRoutes = [
   {
@@ -80,6 +81,10 @@ const adminRoutes = [
   {
     path: "/admin/accounts/:role/:id/edit",
     element: <AdminUserEdit />,
+  },
+  {
+  path: "/admin/integrations",
+  element: <AdminIntegrations />,
   },
 ];
 

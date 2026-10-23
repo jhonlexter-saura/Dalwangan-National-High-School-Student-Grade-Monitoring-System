@@ -251,3 +251,18 @@ export function loginWithGoogle(credential) {
     body: JSON.stringify({ credential }),
   });
 }
+
+export function getPublicIntegrationSettings() {
+  return request("/integrations/public");
+}
+
+export function getIntegrationSettings() {
+  return request("/integrations");
+}
+
+export function updateIntegrationSetting(key, enabled) {
+  return request("/integrations", {
+    method: "PATCH",
+    body: JSON.stringify({ [key]: enabled }),
+  });
+}

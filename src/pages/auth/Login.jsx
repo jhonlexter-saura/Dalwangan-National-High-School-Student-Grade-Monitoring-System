@@ -1,5 +1,6 @@
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { getPublicIntegrationSettings } from "../../services/schoolDataService";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { GoogleLogin } from "@react-oauth/google";
 import ReCAPTCHA from "react-google-recaptcha";
@@ -18,6 +19,34 @@ function Login() {
   const [loading, setLoading] = useState(false);
 
   const captchaSiteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
+
+  const [integrations, setIntegrations] = useState({
+    googleSignIn: true,
+    recaptcha: true,
+  });
+
+  useEffect(() => {
+    let mounted = true;
+
+    getPublicIntegrationSettings()
+      .then((result) => {
+        if (mounted && result.settings) {
+          setIntegrations({
+            googleSignIn: result.settings.googleSignIn !== false,
+            recaptcha: result.settings.recaptcha !== false,
+          });
+        }
+      })
+      .catch((error) => {
+        console.error("Unable to load integration settings:", error);
+        // Keep both integrations enabled by default.
+        // The backend independently enforces its saved settings.
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   if (user) {
     return <Navigate to={`/${user.role}`} replace />;
@@ -41,7 +70,7 @@ function Login() {
       return;
     }
 
-    if (!captchaToken) {
+    if (integrations.recaptcha && !captchaToken) {
       setError("Please complete the reCAPTCHA checkbox.");
       return;
     }
@@ -158,6 +187,7 @@ function Login() {
             />
           </div>
 
+          {integrations.recaptcha && (
           <div className="flex justify-center">
             {captchaSiteKey ? (
               <ReCAPTCHA
@@ -167,7 +197,9 @@ function Login() {
                 onExpired={() => setCaptchaToken(null)}
                 onErrored={() => {
                   setCaptchaToken(null);
-                  setError("reCAPTCHA failed to load. Please refresh and try again.");
+                  setError(
+                    "reCAPTCHA failed to load. Please refresh and try again."
+                  );
                 }}
               />
             ) : (
@@ -176,32 +208,44 @@ function Login() {
               </p>
             )}
           </div>
+        )}
 
           <button
             type="submit"
-            disabled={loading || !captchaSiteKey}
+            disabled={loading || (integrations.recaptcha && !captchaSiteKey)}
             className="w-full rounded-md bg-blue-600 px-4 py-2.5 font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {loading ? "Signing in..." : "Login"}
           </button>
         </form>
 
-        <div className="my-5 flex items-center gap-3">
-          <div className="h-px flex-1 bg-gray-200" />
-          <span className="text-xs text-gray-500">OR</span>
-          <div className="h-px flex-1 bg-gray-200" />
-        </div>
+        {integrations.googleSignIn && (
+        <>
+          <div className="my-5 flex items-center gap-3">
+            <div className="h-px flex-1 bg-gray-200" />
+            <span className="text-xs text-gray-500">OR</span>
+            <div className="h-px flex-1 bg-gray-200" />
+          </div>
 
-        <div className="flex justify-center">
-          <GoogleLogin
-            onSuccess={handleGoogleSuccess}
-            onError={() => setError("Google sign-in was cancelled or failed.")}
-            useOneTap={false}
-            text="signin_with"
-            shape="rectangular"
-            width="320"
-          />
-        </div>
+          <div className="flex justify-center">
+            <GoogleLogin
+              onSuccess={handleGoogleSuccess}
+              onError={() =>
+                setError("Google sign-in was cancelled or failed.")
+              }
+              useOneTap={false}
+              text="signin_with"
+              shape="rectangular"
+              width="320"
+            />
+          </div>
+
+          <p className="mt-4 text-center text-xs text-gray-500">
+            Google sign-in is available only for existing, active
+            DNHS-SGMS accounts.
+          </p>
+        </>
+      )}
 
         <p className="mt-4 text-center text-xs text-gray-500">
           Google sign-in is available only for existing, active DNHS-SGMS accounts.

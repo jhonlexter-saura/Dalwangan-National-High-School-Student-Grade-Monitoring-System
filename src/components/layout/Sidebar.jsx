@@ -11,6 +11,7 @@ import {
   Settings,
   X,
   CalendarDays,
+  Plug,
 } from "lucide-react";
 
 import { NavLink } from "react-router-dom";
@@ -196,7 +197,14 @@ function Sidebar({ isOpen, onClose }) {
 
           {/* SYSTEM */}
           <SectionLabel className="mt-8">System</SectionLabel>
-
+          {role === "admin" && (
+            <NavItem
+              to="/admin/integrations"
+              icon={<Plug size={20} />}
+              label="Integrations"
+              onClick={onClose}
+            />
+          )}
           <div className="space-y-1">
             <NavItem
               to={`/${role}/settings`}

@@ -1,6 +1,7 @@
 const express = require("express");
 const bcrypt = require("bcrypt");
 const crypto = require("crypto");
+const IntegrationSetting = require("../models/IntegrationSetting");
 
 const { OAuth2Client } = require("google-auth-library");
 
@@ -28,6 +29,17 @@ const FORGOT_PASSWORD_MESSAGE =
 
 function hashToken(token) {
   return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+async function getIntegrationFlags() {
+  const settings = await IntegrationSetting.findOne({
+    key: "global",
+  }).lean();
+
+  return {
+    googleSignIn: settings?.googleSignIn ?? true,
+    recaptcha: settings?.recaptcha ?? true,
+  };
 }
 
 async function verifyRecaptcha(captchaToken, remoteIp) {
@@ -75,31 +87,35 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    let captchaValid;
+    const integrations = await getIntegrationFlags();
 
-    try {
-      captchaValid = await verifyRecaptcha(
-        req.body?.captchaToken,
-        req.ip
-      );
-    } catch (error) {
-      if (error.message === "RECAPTCHA_NOT_CONFIGURED") {
+    if (integrations.recaptcha) {
+      let captchaValid;
+
+      try {
+        captchaValid = await verifyRecaptcha(
+          req.body?.captchaToken,
+          req.ip
+        );
+      } catch (error) {
+        if (error.message === "RECAPTCHA_NOT_CONFIGURED") {
+          return res.status(503).json({
+            error: "reCAPTCHA is not configured on this server",
+          });
+        }
+
+        console.error("reCAPTCHA verification unavailable:", error.message);
+
         return res.status(503).json({
-          error: "reCAPTCHA is not configured on this server",
+          error: "Unable to verify reCAPTCHA. Please try again.",
         });
       }
 
-      console.error("reCAPTCHA verification unavailable:", error.message);
-
-      return res.status(503).json({
-        error: "Unable to verify reCAPTCHA. Please try again.",
-      });
-    }
-
-    if (!captchaValid) {
-      return res.status(403).json({
-        error: "Please complete the reCAPTCHA challenge again.",
-      });
+      if (!captchaValid) {
+        return res.status(403).json({
+          error: "Please complete the reCAPTCHA challenge again.",
+        });
+      }
     }
 
     const { email, password } = req.body || {};
@@ -172,6 +188,13 @@ router.post("/google", async (req, res) => {
     if (!isAuthenticationConfigured()) {
       return res.status(503).json({
         error: "Authentication is not configured on this server",
+      });
+    }
+    const integrations = await getIntegrationFlags();
+
+    if (!integrations.googleSignIn) {
+      return res.status(403).json({
+        error: "Google Sign-In is disabled by the administrator.",
       });
     }
 
