@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   BookOpen,
@@ -14,9 +14,9 @@ import { useAuth } from "../../context/AuthContext";
 import {
   getClasses,
   getStudents,
-  addStudentToClassAsTeacher,
   getActivitiesByClass,
 } from "../../services/schoolDataService";
+import StudentInviteManager from "../../components/classes/StudentInviteManager";
 
 function TeacherClassDetails() {
   const { classId } = useParams();
@@ -27,10 +27,8 @@ function TeacherClassDetails() {
   const [students, setStudents] = useState([]);
   const [activities, setActivities] = useState([]);
 
-  const [selectedStudent, setSelectedStudent] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadingActivities, setLoadingActivities] = useState(true);
-  const [adding, setAdding] = useState(false);
   const [error, setError] = useState("");
   const [activitiesError, setActivitiesError] = useState("");
 
@@ -45,7 +43,7 @@ function TeacherClassDetails() {
       ]);
 
       const selectedClass = classesData.find(
-        (item) => item._id === classId
+        (item) => String(item._id || item.id) === String(classId)
       );
 
       if (!selectedClass) {
@@ -54,7 +52,7 @@ function TeacherClassDetails() {
       }
 
       setClassData(selectedClass);
-      setStudents(studentsData);
+      setStudents(studentsData || []);
     } catch (err) {
       console.error("Failed to load class:", err);
       setError(err.message || "Failed to load class.");
@@ -107,48 +105,23 @@ function TeacherClassDetails() {
     };
   }, [classId]);
 
-  const enrolledStudentIds =
-    classData?.students?.map((student) =>
-      typeof student === "string"
-        ? student
-        : student._id
-    ) || [];
-
-  const availableStudents = students.filter(
-    (student) =>
-      !enrolledStudentIds.includes(student._id)
-  );
-
-  const enrolledStudents = students.filter((student) =>
-    enrolledStudentIds.includes(student._id)
-  );
-
-  const handleInvite = async (e) => {
-    e.preventDefault();
-
-    if (!selectedStudent) return;
-
-    try {
-      setAdding(true);
-      setError("");
-
-      const result = await addStudentToClassAsTeacher(
-        selectedStudent,
-        classId,
-        user._id
+  const enrolledStudents = useMemo(() => {
+    if (!classData?.students) return [];
+    return classData.students.map((student) => {
+      if (typeof student === "object" && student.name) return student;
+      const found = students.find(
+        (s) => String(s._id || s.id) === String(student)
       );
-
-      setClassData(result.class);
-      setSelectedStudent("");
-    } catch (err) {
-      console.error("Failed to invite student:", err);
-      setError(
-        err.message || "Failed to add student to class."
+      return (
+        found || {
+          _id: student,
+          name: "Enrolled Student",
+          studentId: "—",
+          gradeLevel: classData.gradeLevel,
+        }
       );
-    } finally {
-      setAdding(false);
-    }
-  };
+    });
+  }, [classData?.students, students]);
 
   if (loading) {
     return (
@@ -161,9 +134,7 @@ function TeacherClassDetails() {
   if (!classData) {
     return (
       <div className="rounded-xl border bg-white p-8 text-center">
-        <p className="text-red-500">
-          {error || "Class not found."}
-        </p>
+        <p className="text-red-500">{error || "Class not found."}</p>
       </div>
     );
   }
@@ -186,8 +157,7 @@ function TeacherClassDetails() {
           </h1>
 
           <p className="mt-1 text-sm text-gray-500">
-            Section {classData.section} · Grade{" "}
-            {classData.gradeLevel} ·{" "}
+            Section {classData.section} · Grade {classData.gradeLevel} ·{" "}
             {classData.schoolYear}
           </p>
         </div>
@@ -199,7 +169,7 @@ function TeacherClassDetails() {
           <SummaryItem
             icon={<Users size={19} />}
             label="Students"
-            value={classData.students?.length || 0}
+            value={enrolledStudents.length}
           />
 
           <SummaryItem
@@ -329,77 +299,48 @@ function TeacherClassDetails() {
         </div>
       )}
 
-      {/* Invite Student */}
+      {/* ========================================================= */}
+      {/* INVITE STUDENTS SECTION (Searchbar + Grade-level + Multi)  */}
+      {/* ========================================================= */}
       <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 mb-5 border-b border-gray-100 pb-4">
           <div className="rounded-lg bg-blue-50 p-2 text-blue-600">
             <UserPlus size={20} />
           </div>
 
           <div>
             <h2 className="font-semibold text-gray-900">
-              Invite Student
+              Invite Students
             </h2>
 
             <p className="text-sm text-gray-500">
-              Add an existing student to this class.
+              Search and invite Grade {classData.gradeLevel} students to this class.
             </p>
           </div>
         </div>
 
-        <form
-          onSubmit={handleInvite}
-          className="mt-5 flex flex-col gap-3 sm:flex-row"
-        >
-          <select
-            value={selectedStudent}
-            onChange={(e) =>
-              setSelectedStudent(e.target.value)
-            }
-            className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-          >
-            <option value="">
-              Select a student
-            </option>
-
-            {availableStudents.map((student) => (
-              <option
-                key={student._id}
-                value={student._id}
-              >
-                {student.name} — {student.studentId}
-              </option>
-            ))}
-          </select>
-
-          <button
-            type="submit"
-            disabled={!selectedStudent || adding}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <UserPlus size={17} />
-
-            {adding ? "Adding..." : "Add Student"}
-          </button>
-        </form>
+        <StudentInviteManager
+          classData={classData}
+          allStudents={students}
+          isTeacher={true}
+          teacherUserId={user?._id}
+          onSuccess={(updatedClass) => {
+            setClassData(updatedClass);
+          }}
+        />
       </div>
 
-      {/* Students */}
+      {/* Enrolled Students List */}
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="flex items-center gap-3 border-b border-gray-200 p-6">
           <Users size={20} className="text-blue-600" />
 
           <div>
-            <h2 className="font-semibold text-gray-900">
-              Students
-            </h2>
+            <h2 className="font-semibold text-gray-900">Students</h2>
 
             <p className="text-sm text-gray-500">
               {enrolledStudents.length} student
-              {enrolledStudents.length !== 1
-                ? "s"
-                : ""}{" "}
-              enrolled
+              {enrolledStudents.length !== 1 ? "s" : ""} enrolled
             </p>
           </div>
         </div>
@@ -410,26 +351,35 @@ function TeacherClassDetails() {
           </div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {enrolledStudents.map((student) => (
-              <div
-                key={student._id}
-                className="flex items-center justify-between px-6 py-4"
-              >
-                <div>
-                  <p className="font-medium text-gray-900">
-                    {student.name}
-                  </p>
+            {enrolledStudents.map((student) => {
+              const sid = student._id || student.id;
+              return (
+                <div
+                  key={sid}
+                  className="flex items-center justify-between px-6 py-4"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 font-bold text-xs text-blue-700">
+                      {student.name ? student.name[0].toUpperCase() : "S"}
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-900">
+                        {student.name}
+                      </p>
 
-                  <p className="text-sm text-gray-500">
-                    {student.studentId}
-                  </p>
-                </div>
+                      <p className="text-sm text-gray-500">
+                        {student.studentId}
+                        {student.email && ` · ${student.email}`}
+                      </p>
+                    </div>
+                  </div>
 
-                <div className="text-right text-sm text-gray-500">
-                  Grade {student.gradeLevel}
+                  <div className="text-right text-xs font-medium text-gray-500 rounded-md bg-gray-50 px-2.5 py-1">
+                    Grade {student.gradeLevel || classData.gradeLevel}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

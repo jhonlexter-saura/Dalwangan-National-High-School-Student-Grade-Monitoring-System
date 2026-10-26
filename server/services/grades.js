@@ -88,15 +88,54 @@ function calculateStudentGradeFromActivities({
   };
 }
 
-async function calculateClassGrades(classId, studentId = null) {
+/**
+ * Checks that every grading category has at least one activity
+ * with totalPoints > 0 in the given class + period.
+ *
+ * Returns { complete: boolean, missingCategories: string[] }
+ */
+async function isGradebookComplete(classId, academicPeriodId) {
+  const activities = await Activity.find({
+    class: classId,
+    academicPeriod: academicPeriodId,
+  }).lean();
+
+  const presentCategories = new Set(
+    activities
+      .filter((a) => Number(a.totalPoints || 0) > 0)
+      .map((a) => a.gradingCategory)
+  );
+
+  const missingCategories = CATEGORY_KEYS.filter(
+    (key) => !presentCategories.has(key)
+  );
+
+  return {
+    complete: missingCategories.length === 0,
+    missingCategories,
+  };
+}
+
+/**
+ * Calculates grades for all (or one) student in a class,
+ * optionally scoped to a single academic period.
+ */
+async function calculateClassGrades(classId, studentId = null, academicPeriodId = null) {
   const classRecord = await Class.findById(classId).lean();
 
   if (!classRecord) {
     throw new Error("Class not found");
   }
 
-  const activities = await Activity.find({ class: classId }).lean();
-  const scores = await Score.find({ class: classId }).lean();
+  const activityQuery = { class: classId };
+  if (academicPeriodId) {
+    activityQuery.academicPeriod = academicPeriodId;
+  }
+
+  const activities = await Activity.find(activityQuery).lean();
+
+  const scoreQuery = { class: classId };
+  const scores = await Score.find(scoreQuery).lean();
 
   const scoreMapByStudent = new Map();
 
@@ -134,4 +173,5 @@ module.exports = {
   calculateClassGrades,
   calculateStudentGradeFromActivities,
   getCategoryWeights,
+  isGradebookComplete,
 };

@@ -250,6 +250,147 @@ router.post("/", async (req, res) => {
   }
 });
 
+// BATCH ADD STUDENTS TO CLASS (TEACHER)
+router.post(
+  "/batch/classes/:classId/teacher/:userId",
+  async (req, res) => {
+    try {
+      const { classId, userId } = req.params;
+      const { studentIds } = req.body;
+
+      if (!Array.isArray(studentIds) || studentIds.length === 0) {
+        return res.status(400).json({
+          error: "studentIds array is required",
+        });
+      }
+
+      const Teacher = require("../models/Teacher");
+      const teacher = await Teacher.findOne({
+        user: userId,
+      });
+
+      if (!teacher) {
+        return res.status(404).json({
+          error: "Teacher profile not found",
+        });
+      }
+
+      const classData = await Class.findById(classId);
+
+      if (!classData) {
+        return res.status(404).json({
+          error: "Class not found",
+        });
+      }
+
+      if (
+        classData.teacher.toString() !==
+        teacher._id.toString()
+      ) {
+        return res.status(403).json({
+          error: "You do not have permission to modify this class",
+        });
+      }
+
+      const existingIds = new Set(
+        (classData.students || []).map((id) => id.toString())
+      );
+
+      const idsToAdd = [];
+      for (const sid of studentIds) {
+        const student = await Student.findById(sid);
+        if (student && !existingIds.has(student._id.toString())) {
+          idsToAdd.push(student._id);
+          existingIds.add(student._id.toString());
+        }
+      }
+
+      if (idsToAdd.length > 0) {
+        classData.students.push(...idsToAdd);
+        await classData.save();
+      }
+
+      const updatedClass = await Class.findById(classId)
+        .populate("teacher")
+        .populate("students");
+
+      res.json({
+        message: `${idsToAdd.length} student(s) added successfully`,
+        class: updatedClass,
+        addedCount: idsToAdd.length,
+      });
+    } catch (error) {
+      console.error(
+        "Teacher batch add students error:",
+        error.message
+      );
+
+      res.status(500).json({
+        error: "Failed to add students to class",
+      });
+    }
+  }
+);
+
+// BATCH ADD STUDENTS TO CLASS (ADMIN)
+router.post("/batch/classes/:classId", async (req, res) => {
+  try {
+    const { classId } = req.params;
+    const { studentIds } = req.body;
+
+    if (!Array.isArray(studentIds) || studentIds.length === 0) {
+      return res.status(400).json({
+        error: "studentIds array is required",
+      });
+    }
+
+    const classData = await Class.findById(classId);
+
+    if (!classData) {
+      return res.status(404).json({
+        error: "Class not found",
+      });
+    }
+
+    const existingIds = new Set(
+      (classData.students || []).map((id) => id.toString())
+    );
+
+    const idsToAdd = [];
+    for (const sid of studentIds) {
+      const student = await Student.findById(sid);
+      if (student && !existingIds.has(student._id.toString())) {
+        idsToAdd.push(student._id);
+        existingIds.add(student._id.toString());
+      }
+    }
+
+    if (idsToAdd.length > 0) {
+      classData.students.push(...idsToAdd);
+      await classData.save();
+    }
+
+    const updatedClass = await Class.findById(classId)
+      .populate("teacher")
+      .populate("students");
+
+    res.json({
+      message: `${idsToAdd.length} student(s) added successfully`,
+      class: updatedClass,
+      addedCount: idsToAdd.length,
+    });
+  } catch (error) {
+    console.error(
+      "Batch add students error:",
+      error.message
+    );
+
+    res.status(500).json({
+      error: "Failed to add students to class",
+    });
+  }
+});
+
 // ADD STUDENT TO CLASS
 router.post("/:studentId/classes/:classId", async (req, res) => {
   try {

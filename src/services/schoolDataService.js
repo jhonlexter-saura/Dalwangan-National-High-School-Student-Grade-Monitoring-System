@@ -68,6 +68,13 @@ export function addStudentToClass(studentId, classId) {
   });
 }
 
+export function addStudentsToClass(studentIds, classId) {
+  return request(`/students/batch/classes/${classId}`, {
+    method: "POST",
+    body: JSON.stringify({ studentIds }),
+  });
+}
+
 // -----------------------------
 // Activities
 // -----------------------------
@@ -186,6 +193,20 @@ export function addStudentToClassAsTeacher(
   );
 }
 
+export function addStudentsToClassAsTeacher(
+  studentIds,
+  classId,
+  userId
+) {
+  return request(
+    `/students/batch/classes/${classId}/teacher/${userId}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ studentIds }),
+    }
+  );
+}
+
 export function getAcademicPeriods(schoolYear) {
   const query = schoolYear
     ? `?schoolYear=${encodeURIComponent(schoolYear)}`
@@ -265,4 +286,40 @@ export function updateIntegrationSetting(key, enabled) {
     method: "PATCH",
     body: JSON.stringify({ [key]: enabled }),
   });
+}
+
+// -----------------------------
+// Grades
+// -----------------------------
+
+/**
+ * Fetch all students' grades for a class scoped to one academic period.
+ * Returns { grades, complete, missingCategories, finalized, finalizedAt }.
+ */
+export function getClassGradesByPeriod(classId, periodId) {
+  return request(`/grades/class/${classId}/period/${periodId}`);
+}
+
+/**
+ * Lightweight check: is the gradebook complete & finalized?
+ * Returns { complete, missingCategories, finalized, finalizedAt }.
+ */
+export function getGradebookStatus(classId, periodId) {
+  return request(`/grades/class/${classId}/period/${periodId}/status`);
+}
+
+/**
+ * Teacher finalizes the gradebook for a class + period.
+ */
+export function finalizeGradebook(classId, periodId) {
+  return request(`/grades/class/${classId}/period/${periodId}/finalize`, {
+    method: "POST",
+  });
+}
+
+/**
+ * Student: fetch all finalized grades across all enrolled classes.
+ */
+export function getMyGrades() {
+  return request("/grades/student/me");
 }

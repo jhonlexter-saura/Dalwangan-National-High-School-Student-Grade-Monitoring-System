@@ -13,8 +13,8 @@ import { useSchoolData } from "../../context/SchoolDataContext";
 
 import {
   getTeachers,
-  addStudentToClass,
 } from "../../services/schoolDataService";
+import StudentInviteManager from "../../components/classes/StudentInviteManager";
 
 function AdminClasses() {
   const navigate = useNavigate();
@@ -22,7 +22,6 @@ function AdminClasses() {
   const { classes, loading, createClass, reloadData } = useSchoolData();
 
   const [teachers, setTeachers] = useState([]);
-
   const [loadingTeachers, setLoadingTeachers] = useState(false);
 
   // Modals
@@ -33,10 +32,9 @@ function AdminClasses() {
   const [selectedClassId, setSelectedClassId] = useState(null);
 
   const [isCreatingClass, setIsCreatingClass] = useState(false);
-  const [isInvitingStudent, setIsInvitingStudent] = useState(false);
 
   // --------------------------------------------------
-  // DEFAULT FORMS
+  // DEFAULT FORMS - Automatic grading is true by default
   // --------------------------------------------------
 
   const defaultClassForm = {
@@ -46,25 +44,13 @@ function AdminClasses() {
     teacher: "",
     schoolYear: "2026-2027",
 
-    gradingSystemEnabled: false,
+    gradingSystemEnabled: true,
     writtenWorkPercentage: "30",
     performanceTaskPercentage: "50",
     assessmentPercentage: "20",
   };
 
-  const defaultStudentForm = {
-    studentId: "",
-    name: "",
-    email: "",
-  };
-
-  const [classForm, setClassForm] = useState(
-    defaultClassForm
-  );
-
-  const [studentForm, setStudentForm] = useState(
-    defaultStudentForm
-  );
+  const [classForm, setClassForm] = useState(defaultClassForm);
 
   // --------------------------------------------------
   // LOAD TEACHERS
@@ -121,24 +107,18 @@ function AdminClasses() {
 
   const openInviteModal = (classId) => {
     setSelectedClassId(classId);
-
-    setStudentForm({
-      ...defaultStudentForm,
-    });
-
     setShowInviteModal(true);
   };
 
   const closeInviteModal = () => {
-    if (isInvitingStudent) return;
-
     setShowInviteModal(false);
     setSelectedClassId(null);
-
-    setStudentForm({
-      ...defaultStudentForm,
-    });
   };
+
+  const selectedClassForInvite = classes.find(
+    (classItem) =>
+      String(classItem._id || classItem.id) === String(selectedClassId)
+  );
 
   // --------------------------------------------------
   // FORM HANDLERS
@@ -148,15 +128,6 @@ function AdminClasses() {
     const { name, value } = e.target;
 
     setClassForm((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-  };
-
-  const handleStudentChange = (e) => {
-    const { name, value } = e.target;
-
-    setStudentForm((prev) => ({
       ...prev,
       [name]: value,
     }));
@@ -257,12 +228,8 @@ function AdminClasses() {
         name: classForm.name.trim(),
         section: classForm.section.trim(),
         gradeLevel: Number(classForm.gradeLevel),
-
-        // Current Class model uses teacher ObjectId
         teacher: classForm.teacher,
-
         schoolYear: classForm.schoolYear,
-
         gradingSystem,
       });
 
@@ -287,98 +254,6 @@ function AdminClasses() {
       );
     } finally {
       setIsCreatingClass(false);
-    }
-  };
-
-  // --------------------------------------------------
-  // INVITE STUDENT
-  // --------------------------------------------------
-
-  const handleInviteStudent = async (e) => {
-    e.preventDefault();
-
-    if (isInvitingStudent) return;
-
-    if (
-      !selectedClassId ||
-      !studentForm.studentId.trim() ||
-      !studentForm.name.trim() ||
-      !studentForm.email.trim()
-    ) {
-      showToast(
-        "Please complete all student fields.",
-        "warning"
-      );
-
-      return;
-    }
-
-    const selectedClass = classes.find(
-      (classItem) =>
-        String(classItem._id || classItem.id) ===
-        String(selectedClassId)
-    );
-
-    if (!selectedClass) {
-      showToast(
-        "Selected class was not found.",
-        "error"
-      );
-
-      return;
-    }
-
-    // Prevent duplicate email
-    const duplicateEmail =
-      selectedClass.students?.some(
-        (student) =>
-          student.email?.toLowerCase() ===
-          studentForm.email.toLowerCase()
-      );
-
-    if (duplicateEmail) {
-      showToast(
-        "This student is already in the selected class.",
-        "warning"
-      );
-
-      return;
-    }
-
-    try {
-      setIsInvitingStudent(true);
-
-      await addStudentToClass(
-        studentForm.studentId,
-        selectedClassId
-      );
-
-      // Refresh classes from MongoDB
-      await reloadData();
-
-      setShowInviteModal(false);
-      setSelectedClassId(null);
-
-      setStudentForm({
-        ...defaultStudentForm,
-      });
-
-      showToast(
-        "Student added to the class successfully.",
-        "success"
-      );
-    } catch (error) {
-      console.error(
-        "Failed to invite student:",
-        error
-      );
-
-      showToast(
-        error.message || "Failed to invite student.",
-        "error"
-      );
-    } finally {
-      setIsInvitingStudent(false);
     }
   };
 
@@ -565,7 +440,7 @@ function AdminClasses() {
 
                 </button>
 
-                {/* INVITE */}
+                {/* INVITE BUTTON */}
                 <button
                   type="button"
                   onClick={() =>
@@ -574,7 +449,7 @@ function AdminClasses() {
                   className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-600 transition hover:bg-blue-100"
                 >
                   <UserPlus size={17} />
-                  Invite Student
+                  Invite Students
                 </button>
 
                 {/* STUDENTS */}
@@ -600,7 +475,7 @@ function AdminClasses() {
                             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-600">
                               {student.name
                                 ?.charAt(0)
-                                .toUpperCase()}
+                                .toUpperCase() || "S"}
                             </div>
 
                             <div className="min-w-0">
@@ -610,7 +485,7 @@ function AdminClasses() {
                               </p>
 
                               <p className="truncate text-xs text-gray-500">
-                                {student.email}
+                                {student.email || student.studentId}
                               </p>
 
                             </div>
@@ -870,7 +745,7 @@ function AdminClasses() {
                               max="100"
                               value={classForm[name]}
                               onChange={handleClassChange}
-                              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 pr-9 outline-none focus:border-blue-500"
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 pr-9 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                             />
 
                             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
@@ -894,7 +769,8 @@ function AdminClasses() {
                           ) +
                           Number(
                             classForm.assessmentPercentage
-                          ) === 100
+                          ) ===
+                        100
                           ? "text-green-600"
                           : "text-red-600"
                       }`}
@@ -950,12 +826,12 @@ function AdminClasses() {
       )}
 
       {/* ==================================================
-          INVITE STUDENT MODAL
+          INVITE STUDENTS MODAL (Searchbar + Grade-level + Multi)
       ================================================== */}
 
-      {showInviteModal && (
+      {showInviteModal && selectedClassForInvite && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6"
           onMouseDown={(e) => {
             if (e.target === e.currentTarget) {
               closeInviteModal();
@@ -963,18 +839,18 @@ function AdminClasses() {
           }}
         >
 
-          <div className="w-full max-w-md rounded-xl bg-white shadow-xl">
+          <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl bg-white shadow-xl">
 
             {/* HEADER */}
             <div className="flex items-center justify-between border-b px-6 py-4">
 
               <div>
                 <h2 className="text-lg font-semibold text-gray-800">
-                  Invite Student
+                  Invite Students
                 </h2>
 
                 <p className="text-sm text-gray-500">
-                  Add a student to this class.
+                  {selectedClassForInvite.name} · Section {selectedClassForInvite.section}
                 </p>
               </div>
 
@@ -988,89 +864,18 @@ function AdminClasses() {
 
             </div>
 
-            {/* FORM */}
-            <form
-              onSubmit={handleInviteStudent}
-              className="space-y-4 p-6"
-            >
-
-              <div>
-
-                <label className="block text-sm font-medium text-gray-700">
-                  Student ID
-                </label>
-
-                <input
-                  name="studentId"
-                  value={studentForm.studentId}
-                  onChange={handleStudentChange}
-                  placeholder="e.g. 2026-0001"
-                  required
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5 outline-none focus:border-blue-500"
-                />
-
-              </div>
-
-              <div>
-
-                <label className="block text-sm font-medium text-gray-700">
-                  Student Name
-                </label>
-
-                <input
-                  name="name"
-                  value={studentForm.name}
-                  onChange={handleStudentChange}
-                  placeholder="Juan Dela Cruz"
-                  required
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5 outline-none focus:border-blue-500"
-                />
-
-              </div>
-
-              <div>
-
-                <label className="block text-sm font-medium text-gray-700">
-                  Email
-                </label>
-
-                <input
-                  name="email"
-                  type="email"
-                  value={studentForm.email}
-                  onChange={handleStudentChange}
-                  placeholder="student@example.com"
-                  required
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5 outline-none focus:border-blue-500"
-                />
-
-              </div>
-
-              {/* ACTIONS */}
-              <div className="flex justify-end gap-3 border-t pt-5">
-
-                <button
-                  type="button"
-                  onClick={closeInviteModal}
-                  disabled={isInvitingStudent}
-                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="submit"
-                  disabled={isInvitingStudent}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {isInvitingStudent
-                    ? "Adding..."
-                    : "Invite Student"}
-                </button>
-
-              </div>
-
-            </form>
+            {/* MANAGER */}
+            <div className="p-6">
+              <StudentInviteManager
+                classData={selectedClassForInvite}
+                isTeacher={false}
+                onClose={closeInviteModal}
+                onSuccess={async () => {
+                  await reloadData();
+                  closeInviteModal();
+                }}
+              />
+            </div>
 
           </div>
 

@@ -8,8 +8,8 @@ import { useToast } from "../../context/ToastContext";
 import {
   getClassesByTeacher,
   createClassForTeacher,
-  addStudentToClassAsTeacher,
 } from "../../services/schoolDataService";
+import StudentInviteManager from "../../components/classes/StudentInviteManager";
 
 function TeacherClasses() {
   const { user } = useAuth();
@@ -27,31 +27,21 @@ function TeacherClasses() {
   const [selectedClassId, setSelectedClassId] = useState(null);
 
   const [isCreatingClass, setIsCreatingClass] = useState(false);
-  const [isInvitingStudent, setIsInvitingStudent] = useState(false);
 
-  // Create class form
+  // Create class form - Automatic grading is true by default
   const defaultClassForm = {
     name: "",
     section: "",
     gradeLevel: "",
     schoolYear: "2026-2027",
 
-    gradingSystemEnabled: false,
+    gradingSystemEnabled: true,
     writtenWorkPercentage: "30",
     performanceTaskPercentage: "50",
     assessmentPercentage: "20",
   };
 
   const [formData, setFormData] = useState(defaultClassForm);
-
-  // Invite student form
-  const defaultStudentForm = {
-    studentId: "",
-    name: "",
-    email: "",
-  };
-
-  const [studentForm, setStudentForm] = useState(defaultStudentForm);
 
   // --------------------------------------------------
   // LOAD CLASSES
@@ -109,24 +99,17 @@ function TeacherClasses() {
 
   const openInviteModal = (classId) => {
     setSelectedClassId(classId);
-
-    setStudentForm({
-      ...defaultStudentForm,
-    });
-
     setShowInviteModal(true);
   };
 
   const closeInviteModal = () => {
-    if (isInvitingStudent) return;
-
     setShowInviteModal(false);
     setSelectedClassId(null);
-
-    setStudentForm({
-      ...defaultStudentForm,
-    });
   };
+
+  const selectedClassForInvite = classes.find(
+    (item) => String(item._id || item.id) === String(selectedClassId)
+  );
 
   // --------------------------------------------------
   // FORM HANDLERS
@@ -136,15 +119,6 @@ function TeacherClasses() {
     const { name, value } = e.target;
 
     setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-  };
-
-  const handleStudentChange = (e) => {
-    const { name, value } = e.target;
-
-    setStudentForm((prev) => ({
       ...prev,
       [name]: value,
     }));
@@ -275,103 +249,6 @@ function TeacherClasses() {
       );
     } finally {
       setIsCreatingClass(false);
-    }
-  };
-
-  // --------------------------------------------------
-  // INVITE STUDENT
-  // --------------------------------------------------
-
-  const handleInviteStudent = async (e) => {
-    e.preventDefault();
-
-    if (isInvitingStudent) return;
-
-    if (
-      !selectedClassId ||
-      !studentForm.studentId.trim() ||
-      !studentForm.name.trim() ||
-      !studentForm.email.trim()
-    ) {
-      showToast(
-        "Please complete all student fields.",
-        "warning"
-      );
-
-      return;
-    }
-
-    const selectedClass = classes.find(
-      (item) =>
-        String(item._id || item.id) ===
-        String(selectedClassId)
-    );
-
-    if (!selectedClass) {
-      showToast(
-        "Selected class was not found.",
-        "error"
-      );
-
-      return;
-    }
-
-    // Prevent duplicate student by email
-    const duplicateEmail =
-      selectedClass.students?.some(
-        (student) =>
-          student.email?.toLowerCase() ===
-          studentForm.email.toLowerCase()
-      );
-
-    if (duplicateEmail) {
-      showToast(
-        "This student is already in the selected class.",
-        "warning"
-      );
-
-      return;
-    }
-
-    try {
-      setIsInvitingStudent(true);
-
-      const updatedClass =
-        await addStudentToClassAsTeacher(
-          studentForm.studentId,
-          selectedClassId,
-          user._id
-        );
-
-      /*
-       * Depending on the backend response, updatedClass
-       * may be the updated class or just a success response.
-       *
-       * Reloading keeps the UI synchronized with MongoDB.
-       */
-      await loadClasses();
-
-      setShowInviteModal(false);
-
-      setSelectedClassId(null);
-
-      setStudentForm({
-        ...defaultStudentForm,
-      });
-
-      showToast(
-        "Student added to the class successfully.",
-        "success"
-      );
-    } catch (err) {
-      console.error("Failed to invite student:", err);
-
-      showToast(
-        err.message || "Failed to invite student.",
-        "error"
-      );
-    } finally {
-      setIsInvitingStudent(false);
     }
   };
 
@@ -516,7 +393,7 @@ function TeacherClasses() {
                   )}
                 </button>
 
-                {/* INVITE STUDENT */}
+                {/* INVITE STUDENTS BUTTON */}
                 <button
                   type="button"
                   onClick={() =>
@@ -525,10 +402,10 @@ function TeacherClasses() {
                   className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-600 transition hover:bg-blue-100"
                 >
                   <UserPlus size={17} />
-                  Invite Student
+                  Invite Students
                 </button>
 
-                {/* STUDENTS */}
+                {/* STUDENTS PREVIEW */}
                 {item.students?.length > 0 && (
                   <div className="mt-5 border-t pt-4">
 
@@ -545,7 +422,7 @@ function TeacherClasses() {
                           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-600">
                             {student.name
                               ?.charAt(0)
-                              .toUpperCase()}
+                              .toUpperCase() || "S"}
                           </div>
 
                           <div className="min-w-0">
@@ -554,7 +431,7 @@ function TeacherClasses() {
                             </p>
 
                             <p className="truncate text-xs text-gray-500">
-                              {student.email}
+                              {student.email || student.studentId}
                             </p>
                           </div>
                         </div>
@@ -838,30 +715,29 @@ function TeacherClasses() {
       )}
 
       {/* ================================================== */}
-      {/* INVITE STUDENT MODAL */}
+      {/* INVITE STUDENTS MODAL (Searchbar + Grade-level + Multi) */}
       {/* ================================================== */}
 
-      {showInviteModal && (
+      {showInviteModal && selectedClassForInvite && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6"
           onMouseDown={(e) => {
             if (e.target === e.currentTarget) {
               closeInviteModal();
             }
           }}
         >
-          <div className="w-full max-w-md rounded-xl bg-white shadow-xl">
+          <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl bg-white shadow-xl">
 
             {/* HEADER */}
             <div className="flex items-center justify-between border-b px-6 py-4">
-
               <div>
                 <h2 className="text-lg font-semibold text-gray-900">
-                  Invite Student
+                  Invite Students
                 </h2>
 
                 <p className="text-sm text-gray-500">
-                  Add a student to this class.
+                  {selectedClassForInvite.name} · Section {selectedClassForInvite.section}
                 </p>
               </div>
 
@@ -872,86 +748,21 @@ function TeacherClasses() {
               >
                 <X size={20} />
               </button>
-
             </div>
 
-            {/* FORM */}
-            <form
-              onSubmit={handleInviteStudent}
-              className="space-y-4 p-6"
-            >
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Student ID
-                </label>
-
-                <input
-                  name="studentId"
-                  value={studentForm.studentId}
-                  onChange={handleStudentChange}
-                  placeholder="e.g. 2026-0001"
-                  required
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5 outline-none focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Student Name
-                </label>
-
-                <input
-                  name="name"
-                  value={studentForm.name}
-                  onChange={handleStudentChange}
-                  placeholder="Juan Dela Cruz"
-                  required
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5 outline-none focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Email
-                </label>
-
-                <input
-                  name="email"
-                  type="email"
-                  value={studentForm.email}
-                  onChange={handleStudentChange}
-                  placeholder="student@example.com"
-                  required
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5 outline-none focus:border-blue-500"
-                />
-              </div>
-
-              {/* ACTIONS */}
-              <div className="flex justify-end gap-3 border-t pt-5">
-
-                <button
-                  type="button"
-                  onClick={closeInviteModal}
-                  disabled={isInvitingStudent}
-                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="submit"
-                  disabled={isInvitingStudent}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {isInvitingStudent
-                    ? "Adding..."
-                    : "Invite Student"}
-                </button>
-
-              </div>
-
-            </form>
+            {/* MANAGER */}
+            <div className="p-6">
+              <StudentInviteManager
+                classData={selectedClassForInvite}
+                isTeacher={true}
+                teacherUserId={user?._id}
+                onClose={closeInviteModal}
+                onSuccess={async () => {
+                  await loadClasses();
+                  closeInviteModal();
+                }}
+              />
+            </div>
           </div>
         </div>
       )}
