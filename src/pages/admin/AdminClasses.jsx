@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Plus,
@@ -15,6 +15,7 @@ import {
   getTeachers,
 } from "../../services/schoolDataService";
 import StudentInviteManager from "../../components/classes/StudentInviteManager";
+import { getSectionsForGrade } from "../../constants/sections";
 
 function AdminClasses() {
   const navigate = useNavigate();
@@ -32,6 +33,8 @@ function AdminClasses() {
   const [selectedClassId, setSelectedClassId] = useState(null);
 
   const [isCreatingClass, setIsCreatingClass] = useState(false);
+  const [isCustomSection, setIsCustomSection] = useState(false);
+  const [customSection, setCustomSection] = useState("");
 
   // --------------------------------------------------
   // DEFAULT FORMS - Automatic grading is true by default
@@ -51,6 +54,11 @@ function AdminClasses() {
   };
 
   const [classForm, setClassForm] = useState(defaultClassForm);
+
+  // Sections for the selected grade level
+  const availableSections = useMemo(() => {
+    return getSectionsForGrade(classForm.gradeLevel, classes);
+  }, [classForm.gradeLevel, classes]);
 
   // --------------------------------------------------
   // LOAD TEACHERS
@@ -84,6 +92,8 @@ function AdminClasses() {
   // --------------------------------------------------
 
   const openCreateClassModal = () => {
+    setIsCustomSection(false);
+    setCustomSection("");
     setClassForm({
       ...defaultClassForm,
     });
@@ -95,6 +105,8 @@ function AdminClasses() {
     if (isCreatingClass) return;
 
     setShowClassModal(false);
+    setIsCustomSection(false);
+    setCustomSection("");
 
     setClassForm({
       ...defaultClassForm,
@@ -133,6 +145,28 @@ function AdminClasses() {
     }));
   };
 
+  const handleGradeLevelChange = (e) => {
+    const newGrade = e.target.value;
+    setClassForm((prev) => ({
+      ...prev,
+      gradeLevel: newGrade,
+      section: "", // reset section when grade level changes
+    }));
+    setIsCustomSection(false);
+    setCustomSection("");
+  };
+
+  const handleSectionChange = (e) => {
+    const val = e.target.value;
+    if (val === "__custom__") {
+      setIsCustomSection(true);
+      setClassForm((prev) => ({ ...prev, section: "" }));
+    } else {
+      setIsCustomSection(false);
+      setClassForm((prev) => ({ ...prev, section: val }));
+    }
+  };
+
   // --------------------------------------------------
   // CREATE CLASS
   // --------------------------------------------------
@@ -142,9 +176,13 @@ function AdminClasses() {
 
     if (isCreatingClass) return;
 
+    const resolvedSection = (
+      isCustomSection ? customSection : classForm.section
+    ).trim();
+
     if (
       !classForm.name.trim() ||
-      !classForm.section.trim() ||
+      !resolvedSection ||
       !classForm.gradeLevel ||
       !classForm.teacher ||
       !classForm.schoolYear
@@ -226,7 +264,7 @@ function AdminClasses() {
 
       await createClass({
         name: classForm.name.trim(),
-        section: classForm.section.trim(),
+        section: resolvedSection,
         gradeLevel: Number(classForm.gradeLevel),
         teacher: classForm.teacher,
         schoolYear: classForm.schoolYear,
@@ -236,6 +274,8 @@ function AdminClasses() {
       await reloadData();
 
       setShowClassModal(false);
+      setIsCustomSection(false);
+      setCustomSection("");
 
       setClassForm({
         ...defaultClassForm,
@@ -578,7 +618,7 @@ function AdminClasses() {
                   <select
                     name="gradeLevel"
                     value={classForm.gradeLevel}
-                    onChange={handleClassChange}
+                    onChange={handleGradeLevelChange}
                     required
                     className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 outline-none focus:border-blue-500"
                   >
@@ -600,14 +640,49 @@ function AdminClasses() {
                     Section
                   </label>
 
-                  <input
+                  <select
                     name="section"
-                    value={classForm.section}
-                    onChange={handleClassChange}
-                    placeholder="e.g. Rizal"
-                    required
-                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5 outline-none focus:border-blue-500"
-                  />
+                    value={isCustomSection ? "__custom__" : classForm.section}
+                    onChange={handleSectionChange}
+                    disabled={!classForm.gradeLevel}
+                    required={!isCustomSection}
+                    className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 outline-none focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+                  >
+                    <option value="">
+                      {!classForm.gradeLevel
+                        ? "Select grade level first"
+                        : "Select section"}
+                    </option>
+
+                    {availableSections.map((sec) => (
+                      <option key={sec} value={sec}>
+                        {sec}
+                      </option>
+                    ))}
+
+                    {classForm.gradeLevel && (
+                      <option value="__custom__">
+                        + Add Custom Section...
+                      </option>
+                    )}
+                  </select>
+
+                  {isCustomSection && (
+                    <input
+                      type="text"
+                      value={customSection}
+                      onChange={(e) => {
+                        setCustomSection(e.target.value);
+                        setClassForm((prev) => ({
+                          ...prev,
+                          section: e.target.value,
+                        }));
+                      }}
+                      placeholder="Enter section name"
+                      required
+                      className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                    />
+                  )}
                 </div>
 
               </div>
