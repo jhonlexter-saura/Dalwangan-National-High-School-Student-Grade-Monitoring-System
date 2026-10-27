@@ -16,6 +16,10 @@ const integrationSettingSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    emailMailer: {
+      type: Boolean,
+      default: true,
+    },
     updatedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",

@@ -7,6 +7,7 @@ const router = express.Router();
 const DEFAULTS = {
   googleSignIn: true,
   recaptcha: true,
+  emailMailer: true,
 };
 
 async function readSettings() {
@@ -17,15 +18,20 @@ async function readSettings() {
   return {
     googleSignIn: document?.googleSignIn ?? DEFAULTS.googleSignIn,
     recaptcha: document?.recaptcha ?? DEFAULTS.recaptcha,
+    emailMailer: document?.emailMailer ?? DEFAULTS.emailMailer,
   };
 }
 
 // Public endpoint: exposes integration status only, never secret keys.
 router.get("/public", async (req, res) => {
   try {
+    const settings = await readSettings();
     return res.json({
       success: true,
-      settings: await readSettings(),
+      settings: {
+        googleSignIn: settings.googleSignIn,
+        recaptcha: settings.recaptcha,
+      },
     });
   } catch (error) {
     console.error("Public integration settings error:", error);
@@ -98,9 +104,13 @@ router.patch("/", async (req, res) => {
     return res.json({
       success: true,
       settings: await readSettings(),
-      message: `${key === "googleSignIn" ? "Google Sign-In" : "reCAPTCHA"} ${
-        value ? "enabled" : "disabled"
-      } successfully.`,
+      message: `${
+        {
+          googleSignIn: "Google Sign-In",
+          recaptcha: "reCAPTCHA",
+          emailMailer: "Email Mailer",
+        }[key]
+      } ${value ? "enabled" : "disabled"} successfully.`,
     });
   } catch (error) {
     console.error("Update integration settings error:", error);

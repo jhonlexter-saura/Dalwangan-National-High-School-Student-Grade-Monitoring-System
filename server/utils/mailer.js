@@ -1,4 +1,5 @@
 const nodemailer = require("nodemailer");
+const IntegrationSetting = require("../models/IntegrationSetting");
 
 // The transporter is created lazily because server.js loads the routes
 // before it calls dotenv.config(). Reading process.env at require-time
@@ -20,6 +21,15 @@ function getTransporter() {
 }
 
 async function sendPasswordResetEmail({ to, name, resetUrl, expiresInMinutes }) {
+  const integrationSettings = await IntegrationSetting.findOne({ key: "global" })
+    .select("emailMailer")
+    .lean();
+  if (integrationSettings?.emailMailer === false) {
+    const error = new Error("Email mailer integration is disabled.");
+    error.code = "MAILER_DISABLED";
+    throw error;
+  }
+
   await getTransporter().sendMail({
     from: `"DNHS-SGMS" <${process.env.EMAIL_USER}>`,
     to,

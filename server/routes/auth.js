@@ -314,7 +314,9 @@ router.post("/forgot-password", async (req, res) => {
       } catch (mailError) {
         // Email failed: invalidate the token and log the cause.
         // The response stays generic so existence isn't revealed.
-        console.error("Password reset email error:", mailError);
+        if (mailError.code !== "MAILER_DISABLED") {
+          console.error("Password reset email error:", mailError);
+        }
 
         await User.updateOne(
           { _id: user._id },

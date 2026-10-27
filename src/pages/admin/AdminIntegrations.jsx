@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   Globe,
   ShieldCheck,
+  Mail,
   Plug,
   RefreshCw,
   AlertCircle,
@@ -30,12 +31,21 @@ const INTEGRATIONS = [
     detail: "Uses the reCAPTCHA keys configured in the server environment.",
     Icon: ShieldCheck,
   },
+  {
+    key: "emailMailer",
+    title: "Email Mailer",
+    description:
+      "Send password reset links to students and teachers by email.",
+    detail: "Uses the Gmail mailer credentials configured on the server.",
+    Icon: Mail,
+  },
 ];
 
 function AdminIntegrations() {
   const [settings, setSettings] = useState({
     googleSignIn: true,
     recaptcha: true,
+    emailMailer: true,
   });
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState("");
