@@ -10,8 +10,6 @@ import {
 
 const emptyForm = {
   schoolYear: "",
-  startDate: "",
-  endDate: "",
   status: "upcoming",
 };
 
@@ -29,10 +27,13 @@ function getSchoolYearRecord(periods, schoolYear) {
     .sort((a, b) => Number(a.trimester) - Number(b.trimester))[0];
 }
 
-function dateLabel(value) {
-  if (!value) return "—";
-  const [year, month, day] = value.slice(0, 10).split("-").map(Number);
-  return new Date(year, month - 1, day).toLocaleDateString();
+function schoolYearDates(schoolYear) {
+  const match = schoolYear.match(/^(\d{4})-(\d{4})$/);
+  if (!match || Number(match[2]) !== Number(match[1]) + 1) return null;
+  return {
+    startDate: new Date(`${match[1]}-06-01T00:00:00.000Z`),
+    endDate: new Date(`${match[2]}-05-31T23:59:59.999Z`),
+  };
 }
 
 export default function AdminAcademicCalendar() {
@@ -42,6 +43,10 @@ export default function AdminAcademicCalendar() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [editingId, setEditingId] = useState("");
+  const [addedSchoolYears, setAddedSchoolYears] = useState([]);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newSchoolYear, setNewSchoolYear] = useState("");
+  const [modalError, setModalError] = useState("");
   const [formData, setFormData] = useState(() => ({
     ...emptyForm,
     schoolYear: getCurrentSchoolYear(),
@@ -51,13 +56,8 @@ export default function AdminAcademicCalendar() {
     [periods]
   );
   const schoolYearOptions = useMemo(() => {
-    const year = new Date().getFullYear();
-    const generatedYears = Array.from(
-      { length: 5 },
-      (_, index) => `${year + index}-${year + index + 1}`
-    );
-    return [...new Set([...schoolYears, ...generatedYears])].sort().reverse();
-  }, [schoolYears]);
+    return [...new Set([...schoolYears, ...addedSchoolYears, getCurrentSchoolYear()])].sort().reverse();
+  }, [schoolYears, addedSchoolYears]);
   const groupedPeriods = useMemo(
     () =>
       periods.reduce((groups, period) => {
@@ -82,8 +82,6 @@ export default function AdminAcademicCalendar() {
             setEditingId(currentYearRecord._id);
             setFormData({
               schoolYear: currentYearRecord.schoolYear,
-              startDate: currentYearRecord.startDate.slice(0, 10),
-              endDate: currentYearRecord.endDate.slice(0, 10),
               status: currentYearRecord.status,
             });
           }
@@ -128,8 +126,6 @@ export default function AdminAcademicCalendar() {
       setEditingId(yearRecord?._id || "");
       setFormData({
         schoolYear: value,
-        startDate: yearRecord?.startDate.slice(0, 10) || "",
-        endDate: yearRecord?.endDate.slice(0, 10) || "",
         status: yearRecord?.status || "upcoming",
       });
       return;
@@ -142,8 +138,6 @@ export default function AdminAcademicCalendar() {
     setEditingId(period._id);
     setFormData({
       schoolYear: period.schoolYear,
-      startDate: period.startDate.slice(0, 10),
-      endDate: period.endDate.slice(0, 10),
       status: period.status,
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -156,12 +150,9 @@ export default function AdminAcademicCalendar() {
       setError("School year is required.");
       return;
     }
-    if (
-      !formData.startDate ||
-      !formData.endDate ||
-      formData.startDate >= formData.endDate
-    ) {
-      setError("Enter valid dates with the end date after the start date.");
+    const yearDates = schoolYearDates(formData.schoolYear.trim());
+    if (!yearDates) {
+      setError("Enter a school year in YYYY-YYYY format, such as 2026-2027.");
       return;
     }
 
@@ -172,8 +163,8 @@ export default function AdminAcademicCalendar() {
       schoolYear: formData.schoolYear.trim(),
       name: existingRecord?.name || `School Year ${formData.schoolYear.trim()}`,
       trimester: existingRecord?.trimester || 1,
-      startDate: formData.startDate,
-      endDate: formData.endDate,
+      startDate: existingRecord?.startDate || yearDates.startDate,
+      endDate: existingRecord?.endDate || yearDates.endDate,
       status: formData.status,
     };
     try {
@@ -195,6 +186,27 @@ export default function AdminAcademicCalendar() {
     }
   };
 
+  const handleAddSchoolYear = (event) => {
+    event.preventDefault();
+    const schoolYear = newSchoolYear.trim();
+    if (!schoolYearDates(schoolYear)) {
+      setModalError("Enter consecutive years in YYYY-YYYY format, such as 2027-2028.");
+      return;
+    }
+    if (schoolYearOptions.includes(schoolYear)) {
+      setModalError("That school year is already on the list.");
+      return;
+    }
+
+    setAddedSchoolYears((current) => [...new Set([...current, schoolYear])]);
+    setEditingId("");
+    setFormData({ schoolYear, status: "upcoming" });
+    setError("");
+    setModalError("");
+    setNewSchoolYear("");
+    setShowAddModal(false);
+  };
+
   const handleDelete = async (period) => {
     if (!window.confirm(`Delete the calendar entry for ${period.schoolYear}?`)) return;
     try {
@@ -214,7 +226,7 @@ export default function AdminAcademicCalendar() {
       <header>
         <h1 className="text-2xl font-bold text-gray-900">School Year Calendar</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Set school years, start and end dates, and status.
+          Add school years and manage their status.
         </p>
       </header>
 
@@ -237,7 +249,7 @@ export default function AdminAcademicCalendar() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-[1fr_auto_1fr]">
             <Field label="School year">
               <select
                 className={inputClassName}
@@ -253,14 +265,20 @@ export default function AdminAcademicCalendar() {
                 ))}
               </select>
             </Field>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Field label="Start date">
-              <input className={inputClassName} type="date" name="startDate" value={formData.startDate} onChange={handleChange} required />
-            </Field>
-            <Field label="End date">
-              <input className={inputClassName} type="date" name="endDate" value={formData.endDate} onChange={handleChange} required />
-            </Field>
+            <button
+              type="button"
+              onClick={() => {
+                setModalError("");
+                setNewSchoolYear("");
+                setShowAddModal(true);
+              }}
+              disabled={saving}
+              aria-label="Add a new school year"
+              title="Add a new school year"
+              className="mt-6 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
+            >
+              <Plus size={20} />
+            </button>
             <Field label="Status">
               <select className={inputClassName} name="status" value={formData.status} onChange={handleChange}>
                 <option value="upcoming">Upcoming</option>
@@ -269,6 +287,9 @@ export default function AdminAcademicCalendar() {
               </select>
             </Field>
           </div>
+          <p className="text-xs text-gray-500">
+            Use + to enter a school year, then save it.
+          </p>
           <div className="flex flex-wrap gap-3 pt-1">
             <button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
               {editingId ? <Save size={17} /> : <Plus size={17} />}
@@ -282,6 +303,65 @@ export default function AdminAcademicCalendar() {
           </div>
         </form>
       </section>
+
+      {showAddModal && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-gray-900/50 p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setShowAddModal(false);
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-school-year-title"
+            className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl"
+          >
+            <h2 id="add-school-year-title" className="text-lg font-semibold text-gray-900">
+              Add a school year
+            </h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Enter the school year range, for example 2027-2028.
+            </p>
+            <form onSubmit={handleAddSchoolYear} className="mt-5 space-y-4">
+              <Field label="School year">
+                <input
+                  autoFocus
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]{4}-[0-9]{4}"
+                  placeholder="2027-2028"
+                  value={newSchoolYear}
+                  onChange={(event) => {
+                    setNewSchoolYear(event.target.value);
+                    setModalError("");
+                  }}
+                  className={inputClassName}
+                  required
+                />
+              </Field>
+              {modalError && (
+                <p role="alert" className="text-sm text-red-700">{modalError}</p>
+              )}
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
+                >
+                  <Plus size={17} /> Add year
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
 
       <section className="space-y-4">
         <div>
@@ -306,7 +386,7 @@ export default function AdminAcademicCalendar() {
                           {period.status}
                         </span>
                       </div>
-                      <p className="mt-1 text-sm text-gray-500">{dateLabel(period.startDate)} – {dateLabel(period.endDate)}</p>
+                      <p className="mt-1 text-sm text-gray-500">Academic year</p>
                     </div>
                     <div className="flex gap-2">
                       <button type="button" onClick={() => handleEdit(period)} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">

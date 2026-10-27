@@ -4,7 +4,6 @@ import {
   Search,
   Users,
   GraduationCap,
-  Mail,
   UserRoundPlus,
   X,
   Pencil,
@@ -387,21 +386,33 @@ export default function AdminStudentAccounts() {
               </p>
             </div>
           ) : (
-            <div className="divide-y">
-              {filteredStudents.map((student) => (
-                <StudentRow
-                  key={student._id}
-                  student={student}
-                  onAssign={openAssignModal}
-                  onEdit={() =>
-                    navigate(
-                      `/admin/accounts/students/${student._id}/edit`
-                    )
-                  }
-                  onToggleStatus={handleToggleStudentStatus}
-                  statusUpdating={updatingStudentId === student._id}
-                />
-              ))}
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[820px]">
+                <thead className="border-b bg-gray-50">
+                  <tr>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Name</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Class</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Status</th>
+                    <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filteredStudents.map((student) => (
+                    <StudentRow
+                      key={student._id}
+                      student={student}
+                      onAssign={openAssignModal}
+                      onEdit={() =>
+                        navigate(
+                          `/admin/accounts/students/${student._id}/edit`
+                        )
+                      }
+                      onToggleStatus={handleToggleStudentStatus}
+                      statusUpdating={updatingStudentId === student._id}
+                    />
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
@@ -554,72 +565,31 @@ function StudentRow({ student, onAssign, onEdit, onToggleStatus, statusUpdating 
   const assigned = Boolean(student.classId);
 
   return (
-    <div className="flex flex-col gap-4 px-5 py-4 transition hover:bg-gray-50 lg:flex-row lg:items-center">
-      {/* Student */}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-3">
+    <tr className="transition hover:bg-gray-50">
+      <td className="px-5 py-4">
+        <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-100 font-semibold text-blue-700">
-            {student.name
-              ?.charAt(0)
-              ?.toUpperCase() || "S"}
+            {student.name?.charAt(0)?.toUpperCase() || "S"}
           </div>
-
-          <div className="min-w-0">
-            <p className="truncate font-medium text-gray-900">
-              {student.name}
-            </p>
-
-            <p className="text-sm text-gray-500">
-              ID: {student.studentId || "N/A"}
-            </p>
-          </div>
+          <p className="max-w-[260px] truncate font-medium text-gray-900" title={student.name}>
+            {student.name}
+          </p>
         </div>
-      </div>
-
-      {/* Class */}
-      <div className="lg:w-48">
-        <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
-          Class
-        </p>
-
+      </td>
+      <td className="px-5 py-4">
         {assigned ? (
-          <p className="mt-1 text-sm text-gray-700">
-            Grade {student.classGradeLevel} -{" "}
-            {student.classSection}
+          <p className="max-w-[180px] break-words text-sm text-gray-700">
+            Grade {student.classGradeLevel} - {student.classSection}
           </p>
         ) : (
-          <span className="mt-1 inline-flex rounded-full bg-yellow-100 px-2.5 py-1 text-xs font-medium text-yellow-700">
+          <span className="inline-flex whitespace-nowrap rounded-full bg-yellow-100 px-2.5 py-1 text-xs font-medium text-yellow-700">
             Unassigned
           </span>
         )}
-      </div>
-
-      {/* Email */}
-      <div className="min-w-0 lg:w-56">
-        <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
-          Email
-        </p>
-
-        <div className="mt-1 flex items-center gap-1.5 text-sm text-gray-700">
-          <Mail
-            size={15}
-            className="shrink-0 text-gray-400"
-          />
-
-          <span className="truncate">
-            {student.email}
-          </span>
-        </div>
-      </div>
-
-      {/* Status */}
-      <div className="lg:w-24">
-        <p className="text-xs font-medium uppercase tracking-wide text-gray-400 lg:hidden">
-          Status
-        </p>
-
+      </td>
+      <td className="px-5 py-4">
         <span
-          className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
+          className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${
             student.status === "inactive"
               ? "bg-gray-100 text-gray-600"
               : "bg-green-100 text-green-700"
@@ -629,45 +599,45 @@ function StudentRow({ student, onAssign, onEdit, onToggleStatus, statusUpdating 
             ? "Inactive"
             : "Active"}
         </span>
-      </div>
+      </td>
+      <td className="px-5 py-4">
+        <div className="flex min-w-[300px] justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => onToggleStatus(student)}
+            disabled={statusUpdating}
+            className={`inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border px-3 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+              student.status === "inactive"
+                ? "border-green-200 bg-green-50 text-green-700 hover:bg-green-100"
+                : "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+            }`}
+          >
+            <Power size={16} />
+            {statusUpdating
+              ? "Saving..."
+              : student.status === "inactive"
+                ? "Activate"
+                : "Deactivate"}
+          </button>
+          <button
+            type="button"
+            onClick={onEdit}
+            className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
+          >
+            <Pencil size={16} />
+            Edit
+          </button>
 
-      {/* Action */}
-      <div className="flex gap-2 lg:w-auto lg:justify-end">
-        <button
-          type="button"
-          onClick={() => onToggleStatus(student)}
-          disabled={statusUpdating}
-          className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
-            student.status === "inactive"
-              ? "border-green-200 bg-green-50 text-green-700 hover:bg-green-100"
-              : "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
-          }`}
-        >
-          <Power size={16} />
-          {statusUpdating
-            ? "Saving..."
-            : student.status === "inactive"
-              ? "Activate"
-              : "Deactivate"}
-        </button>
-        <button
-          type="button"
-          onClick={onEdit}
-          className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
-        >
-          <Pencil size={16} />
-          Edit
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onAssign(student)}
-          className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100"
-        >
-          <UserRoundPlus size={16} />
-          {assigned ? "Reassign" : "Assign"}
-        </button>
-      </div>
-    </div>
+          <button
+            type="button"
+            onClick={() => onAssign(student)}
+            className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100"
+          >
+            <UserRoundPlus size={16} />
+            {assigned ? "Reassign" : "Assign"}
+          </button>
+        </div>
+      </td>
+    </tr>
   );
 }
