@@ -13,6 +13,7 @@ const userRoutes = require("./routes/users");
 const academicPeriodRoutes = require("./routes/academicPeriods");
 const authRoutes = require("./routes/auth");
 const gradeRoutes = require("./routes/grades");
+const notificationRoutes = require("./routes/notifications");
 const integrationRoutes = require("./routes/integrations");
 
 dotenv.config();
@@ -36,6 +37,7 @@ app.use("/api/activities", activityRoutes);
 app.use("/api/scores", scoreRoutes);
 app.use("/api/academic-periods", academicPeriodRoutes);
 app.use("/api/grades", gradeRoutes);
+app.use("/api/notifications", notificationRoutes);
 app.use("/api/users", userRoutes),
 
 app.get("/", (req, res) => {

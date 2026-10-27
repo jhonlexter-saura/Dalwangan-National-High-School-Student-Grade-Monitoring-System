@@ -135,9 +135,39 @@ async function requireAdmin(req, res, next) {
   }
 }
 
+async function requireAuthenticatedUser(req, res, next) {
+  if (!isAuthenticationConfigured()) {
+    return res.status(503).json({
+      error: "Authentication is not configured correctly",
+    });
+  }
+
+  const authorization = req.get("authorization") || "";
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  const userId = match ? getTokenUserId(match[1]) : null;
+
+  if (!userId) {
+    return res.status(401).json({ error: "A valid login is required" });
+  }
+
+  try {
+    const user = await User.findById(userId).select("name role status");
+    if (!user || user.status !== "active") {
+      return res.status(401).json({ error: "Your account is unavailable or inactive" });
+    }
+
+    req.authenticatedUser = user;
+    return next();
+  } catch (error) {
+    console.error("User authorization error:", error);
+    return res.status(500).json({ error: "Failed to verify user access" });
+  }
+}
+
 module.exports = {
   createAccessToken,
   isAuthenticationConfigured,
   requireAdmin,
+  requireAuthenticatedUser,
   getTokenUserId,
 };

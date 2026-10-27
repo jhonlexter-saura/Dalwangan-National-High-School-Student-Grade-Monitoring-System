@@ -314,6 +314,9 @@ export function getGradebookStatus(classId, periodId) {
 export function finalizeGradebook(classId, periodId) {
   return request(`/grades/class/${classId}/period/${periodId}/finalize`, {
     method: "POST",
+  }).then((result) => {
+    window.dispatchEvent(new Event("dnhs:notifications-updated"));
+    return result;
   });
 }
 
@@ -323,6 +326,27 @@ export function finalizeGradebook(classId, periodId) {
 export function unlockGradebook(classId, periodId) {
   return request(`/grades/class/${classId}/period/${periodId}/unlock`, {
     method: "POST",
+  }).then((result) => {
+    window.dispatchEvent(new Event("dnhs:notifications-updated"));
+    return result;
+  });
+}
+
+export function getMyNotifications() {
+  return request("/notifications/me");
+}
+
+export function markNotificationRead(notificationId) {
+  return request(`/notifications/${notificationId}/read`, { method: "PATCH" }).then((result) => {
+    window.dispatchEvent(new Event("dnhs:notifications-updated"));
+    return result;
+  });
+}
+
+export function markAllNotificationsRead() {
+  return request("/notifications/read-all", { method: "PATCH" }).then((result) => {
+    window.dispatchEvent(new Event("dnhs:notifications-updated"));
+    return result;
   });
 }
 

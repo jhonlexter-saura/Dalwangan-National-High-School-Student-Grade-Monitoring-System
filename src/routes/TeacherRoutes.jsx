@@ -4,6 +4,7 @@ import TeacherClasses from "../pages/teacher/TeacherClasses";
 import TeacherDashboard from "../pages/teacher/TeacherDashboard";
 import TeacherScores from "../pages/teacher/TeacherScores";
 import TeacherProfile from "../pages/teacher/TeacherProfile";
+import Notifications from "../pages/Notifications";
 
 const teacherRoutes = [
   {
@@ -29,6 +30,10 @@ const teacherRoutes = [
   {
     path: "teacher/profile",
     element: <TeacherProfile />,
+  },
+  {
+    path: "teacher/notifications",
+    element: <Notifications />,
   },
 ];
 

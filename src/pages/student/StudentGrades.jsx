@@ -40,6 +40,8 @@ export default function StudentGrades() {
 
   const [gradeData, setGradeData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedSchoolYear, setSelectedSchoolYear] = useState("all");
+  const [selectedTerm, setSelectedTerm] = useState("all");
 
   useEffect(() => {
     async function load() {
@@ -67,14 +69,37 @@ export default function StudentGrades() {
     );
   }
 
-  // Classes with at least one finalized period
-  const classesWithGrades = gradeData.filter(
-    (entry) => entry.periods && entry.periods.length > 0
-  );
+  const schoolYears = [...new Set(
+    gradeData.map((entry) => entry.class.schoolYear).filter(Boolean)
+  )].sort((a, b) => String(b).localeCompare(String(a)));
+
+  const availableTerms = [...new Map(
+    gradeData
+      .filter((entry) => selectedSchoolYear === "all" || String(entry.class.schoolYear) === selectedSchoolYear)
+      .flatMap((entry) => entry.periods || [])
+      .map((periodEntry) => [
+        periodEntry.academicPeriod.name,
+        periodEntry.academicPeriod,
+      ])
+  ).values()].sort((a, b) => Number(a.trimester || 0) - Number(b.trimester || 0));
+
+  // Classes with finalized periods matching the selected school year and term.
+  const classesWithGrades = gradeData
+    .filter((entry) => selectedSchoolYear === "all" || String(entry.class.schoolYear) === selectedSchoolYear)
+    .map((entry) => ({
+      ...entry,
+      periods: (entry.periods || []).filter((periodEntry) =>
+        selectedTerm === "all" || periodEntry.academicPeriod.name === selectedTerm
+      ),
+    }))
+    .filter((entry) => entry.periods.length > 0);
 
   // Classes enrolled but no finalized grades yet
   const classesWithoutGrades = gradeData.filter(
-    (entry) => !entry.periods || entry.periods.length === 0
+    (entry) =>
+      (!entry.periods || entry.periods.length === 0) &&
+        (selectedSchoolYear === "all" || String(entry.class.schoolYear) === selectedSchoolYear) &&
+        selectedTerm === "all"
   );
 
   return (
@@ -94,6 +119,40 @@ export default function StudentGrades() {
         </div>
       </div>
 
+      {gradeData.length > 0 && (
+        <section className="flex flex-col gap-4 rounded-xl border bg-white p-4 shadow-sm sm:flex-row sm:items-end">
+          <label className="flex-1 text-sm font-medium text-gray-700">
+            School Year
+            <select
+              value={selectedSchoolYear}
+              onChange={(event) => {
+                setSelectedSchoolYear(event.target.value);
+                setSelectedTerm("all");
+              }}
+              className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 font-normal outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            >
+              <option value="all">All School Years</option>
+              {schoolYears.map((schoolYear) => (
+                <option key={schoolYear} value={schoolYear}>School Year {schoolYear}</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex-1 text-sm font-medium text-gray-700">
+            Term
+            <select
+              value={selectedTerm}
+              onChange={(event) => setSelectedTerm(event.target.value)}
+              className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 font-normal outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            >
+              <option value="all">All Terms</option>
+              {availableTerms.map((term) => (
+                <option key={term._id || term.name} value={term.name}>{term.name}</option>
+              ))}
+            </select>
+          </label>
+        </section>
+      )}
+
       {/* No enrolment at all */}
       {gradeData.length === 0 && (
         <div className="rounded-2xl border border-dashed bg-white p-12 text-center">
@@ -112,6 +171,12 @@ export default function StudentGrades() {
       {classesWithGrades.map((entry) => (
         <ClassGradeCard key={entry.class._id} entry={entry} />
       ))}
+
+      {gradeData.length > 0 && classesWithGrades.length === 0 && classesWithoutGrades.length === 0 && (
+        <div className="rounded-2xl border border-dashed bg-white p-10 text-center text-sm text-gray-500">
+          No finalized grades match the selected school year and term.
+        </div>
+      )}
 
       {/* Enrolled but no finalized grades */}
       {classesWithoutGrades.length > 0 && (

@@ -17,6 +17,7 @@ import AdminAcademicCalendar from "../pages/admin/AdminAcademicCalendar";
 import AdminAllAccounts from "../pages/admin/AdminAllAccounts";
 import AdminIntegrations from "../pages/admin/AdminIntegrations";
 import AdminMonitor from "../pages/admin/AdminMonitor";
+import Notifications from "../pages/Notifications";
 
 const adminRoutes = [
   {
@@ -26,6 +27,10 @@ const adminRoutes = [
   {
     path: "/admin/monitor",
     element: <AdminMonitor />,
+  },
+  {
+    path: "/admin/notifications",
+    element: <Notifications />,
   },
   {
     path: "/admin/classes",

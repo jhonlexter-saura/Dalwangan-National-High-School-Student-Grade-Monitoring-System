@@ -8,15 +8,16 @@ import {
   UserCog,
   Users,
   ShieldPlus,
-  Settings,
   X,
   CalendarDays,
   Plug,
   Monitor,
+  ChevronDown,
 } from "lucide-react";
 
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { useState } from "react";
 
 // Put the uploaded logo here: src/assets/dnhs-logo.svg
 import dnhsLogo from "../../../public/dnhs-logo.svg";
@@ -42,6 +43,9 @@ const ROLE_LABEL = {
 
 function Sidebar({ isOpen, onClose }) {
   const { user } = useAuth();
+  const location = useLocation();
+  const isAccountRoute = location.pathname.startsWith("/admin/accounts");
+  const [accountsOpen, setAccountsOpen] = useState(isAccountRoute);
 
   const role = user?.role;
   const displayName = user?.name ?? user?.username ?? user?.email ?? "User";
@@ -140,16 +144,6 @@ function Sidebar({ isOpen, onClose }) {
               </>
             )}
 
-            {/* ADMIN ONLY - Monitor */}
-            {role === "admin" && (
-              <NavItem
-                to="/admin/monitor"
-                icon={<Monitor size={20} />}
-                label="Monitor"
-                onClick={onClose}
-              />
-            )}
-
             {/* STUDENT */}
             {role === "student" && (
               <NavItem
@@ -167,63 +161,86 @@ function Sidebar({ isOpen, onClose }) {
               <SectionLabel className="mt-8">Account Management</SectionLabel>
 
               <div className="space-y-1">
+                <div className="relative">
+                  <NavItem
+                    to="/admin/accounts"
+                    end
+                    icon={<Users size={20} />}
+                    label="Accounts"
+                    onClick={onClose}
+                    trailing={
+                      <button
+                        type="button"
+                        aria-label={accountsOpen ? "Collapse account pages" : "Expand account pages"}
+                        aria-expanded={accountsOpen}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setAccountsOpen((open) => !open);
+                        }}
+                        className="ml-auto rounded p-1 text-white/60 hover:bg-white/10 hover:text-white"
+                      >
+                        <ChevronDown
+                          size={16}
+                          className={`transition-transform ${accountsOpen ? "rotate-180" : ""}`}
+                        />
+                      </button>
+                    }
+                  />
+                </div>
+
+                {accountsOpen && (
+                  <div className="ml-8 space-y-1 border-l border-white/15 pl-2">
+                    <NavItem
+                      to="/admin/accounts/students"
+                      icon={<UserPlus size={18} />}
+                      label="Student Accounts"
+                      onClick={onClose}
+                    />
+                    <NavItem
+                      to="/admin/accounts/teachers"
+                      icon={<UserCog size={18} />}
+                      label="Teacher Accounts"
+                      onClick={onClose}
+                    />
+                    <NavItem
+                      to="/admin/accounts/admins"
+                      icon={<ShieldPlus size={18} />}
+                      label="Admin Accounts"
+                      onClick={onClose}
+                    />
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* SYSTEM — admin only */}
+          {role === "admin" && (
+            <>
+              <SectionLabel className="mt-8">System</SectionLabel>
+              <div className="space-y-1">
                 <NavItem
-                  to="/admin/accounts"
-                  end
-                  icon={<Users size={20} />}
-                  label="All User Accounts"
+                  to="/admin/monitor"
+                  icon={<Monitor size={20} />}
+                  label="Monitor"
                   onClick={onClose}
                 />
-
+                <NavItem
+                  to="/admin/integrations"
+                  icon={<Plug size={20} />}
+                  label="Integrations"
+                  onClick={onClose}
+                />
                 <NavItem
                   to="/admin/academic-calendar"
                   icon={<CalendarDays size={20} />}
                   label="School Year Calendar"
                   onClick={onClose}
                 />
-
-                <NavItem
-                  to="/admin/accounts/students"
-                  icon={<UserPlus size={20} />}
-                  label="Student Accounts"
-                  onClick={onClose}
-                />
-
-                <NavItem
-                  to="/admin/accounts/teachers"
-                  icon={<UserCog size={20} />}
-                  label="Teacher Accounts"
-                  onClick={onClose}
-                />
-
-                <NavItem
-                  to="/admin/accounts/admins"
-                  icon={<ShieldPlus size={20} />}
-                  label="Admin Accounts"
-                  onClick={onClose}
-                />
               </div>
             </>
           )}
-
-          {/* SYSTEM */}
-          <SectionLabel className="mt-8">System</SectionLabel>
-          {role === "admin" && (
-            <NavItem
-              to="/admin/integrations"
-              icon={<Plug size={20} />}
-              label="Integrations"
-              onClick={onClose}
-            />
-          )}
-          <div className="space-y-1">
-            <NavItem
-              to={`/${role}/settings`}
-              icon={<Settings size={20} />}
-              label="Settings"
-              onClick={onClose}
-            />
-          </div>
         </nav>
       </aside>
     </>
@@ -247,48 +264,51 @@ function SectionLabel({ children, className = "" }) {
 /*
  * Reusable navigation item
  */
-function NavItem({ to, icon, label, onClick, end = false }) {
+function NavItem({ to, icon, label, onClick, end = false, trailing = null }) {
   return (
-    <NavLink
-      to={to}
-      end={end}
-      onClick={onClick}
-      className={({ isActive }) =>
-        `
-        group relative flex w-full items-center gap-3
-        rounded-lg px-3 py-2.5
-        text-sm transition-colors
-        ${
-          isActive
-            ? "bg-white/10 font-medium text-white"
-            : "text-white/70 hover:bg-white/5 hover:text-white"
+    <div className="relative">
+      <NavLink
+        to={to}
+        end={end}
+        onClick={onClick}
+        className={({ isActive }) =>
+          `
+          group relative flex w-full items-center gap-3
+          rounded-lg px-3 py-2.5 ${trailing ? "pr-10" : ""}
+          text-sm transition-colors
+          ${
+            isActive
+              ? "bg-white/10 font-medium text-white"
+              : "text-white/70 hover:bg-white/5 hover:text-white"
+          }
+          `
         }
-        `
-      }
-    >
-      {({ isActive }) => (
-        <>
-          {/* Gold active indicator */}
-          <span
-            className={`absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-[#EABE3E] transition-opacity ${
-              isActive ? "opacity-100" : "opacity-0"
-            }`}
-          />
+      >
+        {({ isActive }) => (
+          <>
+            {/* Gold active indicator */}
+            <span
+              className={`absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-[#EABE3E] transition-opacity ${
+                isActive ? "opacity-100" : "opacity-0"
+              }`}
+            />
 
-          <span
-            className={`transition-colors ${
-              isActive
-                ? "text-[#EABE3E]"
-                : "text-white/60 group-hover:text-[#EABE3E]"
-            }`}
-          >
-            {icon}
-          </span>
+            <span
+              className={`transition-colors ${
+                isActive
+                  ? "text-[#EABE3E]"
+                  : "text-white/60 group-hover:text-[#EABE3E]"
+              }`}
+            >
+              {icon}
+            </span>
 
-          <span>{label}</span>
-        </>
-      )}
-    </NavLink>
+            <span>{label}</span>
+          </>
+        )}
+      </NavLink>
+      {trailing && <div className="absolute right-2 top-1/2 -translate-y-1/2">{trailing}</div>}
+    </div>
   );
 }
 

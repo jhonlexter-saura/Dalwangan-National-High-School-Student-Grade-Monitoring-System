@@ -5,7 +5,13 @@ const { calculateClassGrades, isGradebookComplete } = require("../services/grade
 const Gradebook = require("../models/Gradebook");
 const Class = require("../models/Class");
 const Student = require("../models/Student");
-const { getTokenUserId } = require("../middleware/authorization");
+const Teacher = require("../models/Teacher");
+const AcademicPeriod = require("../models/AcademicPeriod");
+const Notification = require("../models/Notification");
+const {
+  getTokenUserId,
+  requireAuthenticatedUser,
+} = require("../middleware/authorization");
 
 const router = express.Router();
 
@@ -20,6 +26,20 @@ function resolveUserId(req) {
   const match = auth.match(/^Bearer\s+(.+)$/i);
   if (!match) return null;
   return getTokenUserId(match[1]);
+}
+
+async function createNotifications(recipientIds, details) {
+  const uniqueIds = [...new Set(recipientIds.filter(Boolean).map(String))];
+  if (uniqueIds.length === 0) return;
+
+  try {
+    await Notification.insertMany(
+      uniqueIds.map((recipient) => ({ ...details, recipient }))
+    );
+  } catch (error) {
+    // Do not report a failed gradebook action after its state has already changed.
+    console.error("Failed to create grade notifications:", error.message);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -152,9 +172,14 @@ router.get("/class/:classId/period/:periodId/status", async (req, res) => {
 // Teacher finalizes the gradebook for this class + period.
 // Blocked if the gradebook is incomplete (any category missing activities).
 // ---------------------------------------------------------------------------
-router.post("/class/:classId/period/:periodId/finalize", async (req, res) => {
+router.post("/class/:classId/period/:periodId/finalize", requireAuthenticatedUser, async (req, res) => {
   try {
     const { classId, periodId } = req.params;
+    const user = req.authenticatedUser;
+
+    if (!["admin", "teacher"].includes(user.role)) {
+      return res.status(403).json({ error: "Teacher or administrator access is required" });
+    }
 
     // Validate IDs
     if (
@@ -168,6 +193,13 @@ router.post("/class/:classId/period/:periodId/finalize", async (req, res) => {
     const classRecord = await Class.findById(classId).lean();
     if (!classRecord) {
       return res.status(404).json({ error: "Class not found" });
+    }
+
+    if (user.role === "teacher") {
+      const teacher = await Teacher.findById(classRecord.teacher).select("user").lean();
+      if (!teacher || String(teacher.user) !== String(user._id)) {
+        return res.status(403).json({ error: "You can only finalize grades for your own classes" });
+      }
     }
 
     // Completeness gate
@@ -201,15 +233,33 @@ router.post("/class/:classId/period/:periodId/finalize", async (req, res) => {
       });
     }
 
-    // Resolve who finalized
-    const userId = resolveUserId(req);
-
     const gradebook = await Gradebook.create({
       class: classId,
       academicPeriod: periodId,
       finalizedAt: new Date(),
-      finalizedBy: userId || new mongoose.Types.ObjectId(),
+      finalizedBy: user._id,
     });
+
+    try {
+      const [studentProfiles, period] = await Promise.all([
+        Student.find({ _id: { $in: classRecord.students || [] }, user: { $ne: null } })
+          .select("user")
+          .lean(),
+        AcademicPeriod.findById(periodId).select("name").lean(),
+      ]);
+      const periodName = period?.name || "the academic period";
+      await createNotifications(
+        studentProfiles.map((student) => student.user),
+        {
+          type: "grade_finalized",
+          title: "Grades are ready",
+          message: `Your finalized grade for ${classRecord.name} (${classRecord.section}) — ${periodName} is ready to view.`,
+          link: "/student/grades",
+        }
+      );
+    } catch (notificationError) {
+      console.error("Failed to prepare student grade notifications:", notificationError.message);
+    }
 
     return res.status(201).json({
       message: "Gradebook finalized successfully",
@@ -225,9 +275,13 @@ router.post("/class/:classId/period/:periodId/finalize", async (req, res) => {
 // POST /api/grades/class/:classId/period/:periodId/unlock
 // Admin unlocks the finalized gradebook for this class + period.
 // ---------------------------------------------------------------------------
-router.post("/class/:classId/period/:periodId/unlock", async (req, res) => {
+router.post("/class/:classId/period/:periodId/unlock", requireAuthenticatedUser, async (req, res) => {
   try {
     const { classId, periodId } = req.params;
+
+    if (req.authenticatedUser.role !== "admin") {
+      return res.status(403).json({ error: "Administrator access is required" });
+    }
 
     if (
       !mongoose.isValidObjectId(classId) ||
@@ -247,10 +301,31 @@ router.post("/class/:classId/period/:periodId/unlock", async (req, res) => {
       });
     }
 
+    const classRecord = await Class.findById(classId).lean();
+    if (!classRecord) {
+      return res.status(404).json({ error: "Class not found" });
+    }
+
     await Gradebook.deleteOne({
       class: classId,
       academicPeriod: periodId,
     });
+
+    try {
+      const [teacher, period] = await Promise.all([
+        Teacher.findById(classRecord.teacher).select("user").lean(),
+        AcademicPeriod.findById(periodId).select("name").lean(),
+      ]);
+      const periodName = period?.name || "the academic period";
+      await createNotifications(teacher?.user ? [teacher.user] : [], {
+        type: "grade_unlocked",
+        title: "Gradebook unlocked",
+        message: `The finalized grades for ${classRecord.name} (${classRecord.section}) — ${periodName} were unlocked by an administrator. You can now make updates.`,
+        link: `/teacher/scores?classId=${classId}&periodId=${periodId}`,
+      });
+    } catch (notificationError) {
+      console.error("Failed to prepare teacher grade notification:", notificationError.message);
+    }
 
     return res.json({
       message: "Gradebook unlocked successfully",

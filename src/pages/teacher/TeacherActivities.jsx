@@ -17,6 +17,28 @@ import {
   createActivity,
 } from "../../services/schoolDataService";
 
+const ACTIVITY_TYPES_BY_CATEGORY = {
+  written_work: ["activity", "assignment", "quiz"],
+  performance_task: ["project", "performance_task"],
+  assessment: ["exam"],
+};
+const ACTIVITY_TYPE_LABELS = {
+  activity: "Activity",
+  assignment: "Assignment",
+  quiz: "Quiz",
+  project: "Project",
+  performance_task: "Performance Task",
+  exam: "Exam",
+};
+const GRADING_CATEGORY_BY_TYPE = {
+  activity: "written_work",
+  assignment: "written_work",
+  quiz: "written_work",
+  project: "performance_task",
+  performance_task: "performance_task",
+  exam: "assessment",
+};
+
 function TeacherActivities() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -201,16 +223,12 @@ function TeacherActivities() {
       const next = { ...prev, [name]: value };
 
       if (name === "type") {
-        const defaultCategories = {
-          quiz: "written_work",
-          assignment: "written_work",
-          project: "performance_task",
-          performance_task: "performance_task",
-          exam: "assessment",
-          activity: "written_work",
-        };
-
-        next.gradingCategory = defaultCategories[value] || prev.gradingCategory;
+        next.gradingCategory = GRADING_CATEGORY_BY_TYPE[value] || prev.gradingCategory;
+      } else if (name === "gradingCategory") {
+        const availableTypes = ACTIVITY_TYPES_BY_CATEGORY[value] || [];
+        if (!availableTypes.includes(prev.type)) {
+          next.type = availableTypes[0] || "activity";
+        }
       }
 
       return next;
@@ -606,66 +624,6 @@ function TeacherActivities() {
                   />
                 </div>
 
-                {/* Activity Type + Total Points */}
-
-                <div className="grid gap-4 sm:grid-cols-2">
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      Activity Type
-                    </label>
-
-                    <select
-                      name="type"
-                      value={formData.type}
-                      onChange={handleChange}
-                      className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                    >
-                      <option value="activity">
-                        Activity
-                      </option>
-
-                      <option value="assignment">
-                        Assignment
-                      </option>
-
-                      <option value="quiz">
-                        Quiz
-                      </option>
-
-                      <option value="project">
-                        Project
-                      </option>
-
-                      <option value="performance_task">
-                        Performance Task
-                      </option>
-
-                      <option value="exam">
-                        Exam
-                      </option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      Total Points
-                    </label>
-
-                    <input
-                      name="totalPoints"
-                      type="number"
-                      min="1"
-                      value={formData.totalPoints}
-                      onChange={handleChange}
-                      placeholder="20"
-                      required
-                      className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                    />
-                  </div>
-
-                </div>
-
                 {/* Grading Category */}
 
                 <div>
@@ -691,6 +649,22 @@ function TeacherActivities() {
                       Assessment
                     </option>
                   </select>
+                </div>
+
+                {/* Activity Type + Total Points */}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Activity Type</label>
+                    <select name="type" value={formData.type} onChange={handleChange} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
+                      {(ACTIVITY_TYPES_BY_CATEGORY[formData.gradingCategory] || []).map((type) => (
+                        <option key={type} value={type}>{ACTIVITY_TYPE_LABELS[type]}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Total Points</label>
+                    <input name="totalPoints" type="number" min="1" value={formData.totalPoints} onChange={handleChange} placeholder="20" required className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                  </div>
                 </div>
 
                 {/* Date */}

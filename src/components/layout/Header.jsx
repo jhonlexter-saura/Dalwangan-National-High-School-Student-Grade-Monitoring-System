@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import {
   Menu,
@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { useAuth } from "../../context/AuthContext";
+import { getMyNotifications } from "../../services/schoolDataService";
 
 /*
  * Palette pulled from the DNHS logo
@@ -25,8 +26,10 @@ import { useAuth } from "../../context/AuthContext";
 function Header({ onMenuClick }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [profileOpen, setProfileOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const profileRef = useRef(null);
 
   const roleName = {
@@ -36,6 +39,35 @@ function Header({ onMenuClick }) {
   };
 
   const displayName = user?.name || user?.username || "User";
+
+  useEffect(() => {
+    let isCurrent = true;
+    const refreshNotifications = async () => {
+      if (!user) {
+        setUnreadCount(0);
+        return;
+      }
+      try {
+        const result = await getMyNotifications();
+        if (isCurrent) setUnreadCount(result.unreadCount || 0);
+      } catch {
+        if (isCurrent) setUnreadCount(0);
+      }
+    };
+
+    const handleNotificationsUpdated = () => refreshNotifications();
+    window.addEventListener("dnhs:notifications-updated", handleNotificationsUpdated);
+    window.addEventListener("focus", refreshNotifications);
+    const refreshTimer = window.setInterval(refreshNotifications, 30000);
+    refreshNotifications();
+
+    return () => {
+      isCurrent = false;
+      window.clearInterval(refreshTimer);
+      window.removeEventListener("focus", refreshNotifications);
+      window.removeEventListener("dnhs:notifications-updated", handleNotificationsUpdated);
+    };
+  }, [user?._id, location.pathname]);
 
   // Close the profile dropdown when clicking anywhere outside it
   useEffect(() => {
@@ -106,14 +138,18 @@ function Header({ onMenuClick }) {
           <Search size={20} />
         </button>
 
-        <button
+        <Link
+          to={`/${user?.role}/notifications`}
           className="relative rounded-lg p-2 text-[#000062] hover:bg-[#000062]/5"
-          aria-label="Notifications"
+          aria-label={unreadCount ? `Notifications, ${unreadCount} unread` : "Notifications"}
         >
           <Bell size={20} />
-
-          <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500 ring-2 ring-white" />
-        </button>
+          {unreadCount > 0 && (
+            <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white">
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+          )}
+        </Link>
 
         {/* Divider */}
         <div className="mx-1 hidden h-8 w-px bg-gray-200 sm:block" />

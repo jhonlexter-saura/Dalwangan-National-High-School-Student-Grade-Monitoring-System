@@ -27,6 +27,7 @@ export default function AdminAllAccounts() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [selectedRole, setSelectedRole] = useState("all");
+  const [selectedStatus, setSelectedStatus] = useState("all");
 
   useEffect(() => {
     const loadUsers = async () => {
@@ -50,14 +51,23 @@ export default function AdminAllAccounts() {
 
     return users.filter((user) => {
       const matchesRole = selectedRole === "all" || user.role === selectedRole;
+      const status = user.status?.toLowerCase();
+      const matchesStatus = selectedStatus === "all" || status === selectedStatus;
       const matchesSearch =
         !query ||
         user.name?.toLowerCase().includes(query) ||
         user.email?.toLowerCase().includes(query);
 
-      return matchesRole && matchesSearch;
+      return matchesRole && matchesStatus && matchesSearch;
     });
-  }, [users, search, selectedRole]);
+  }, [users, search, selectedRole, selectedStatus]);
+
+  const activeCount = users.filter(
+    (user) => user.status?.toLowerCase() === "active"
+  ).length;
+  const inactiveCount = users.filter(
+    (user) => user.status?.toLowerCase() === "inactive"
+  ).length;
 
   return (
     <div className="space-y-6">
@@ -104,6 +114,16 @@ export default function AdminAllAccounts() {
             <option value="student">Students</option>
             <option value="teacher">Teachers</option>
             <option value="admin">Administrators</option>
+          </select>
+          <select
+            value={selectedStatus}
+            onChange={(event) => setSelectedStatus(event.target.value)}
+            aria-label="Filter accounts by status"
+            className="rounded-lg border border-gray-300 px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          >
+            <option value="all">All statuses ({users.length})</option>
+            <option value="active">Active ({activeCount})</option>
+            <option value="inactive">Inactive ({inactiveCount})</option>
           </select>
         </div>
       </section>
