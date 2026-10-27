@@ -222,6 +222,47 @@ router.post("/class/:classId/period/:periodId/finalize", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /api/grades/class/:classId/period/:periodId/unlock
+// Admin unlocks the finalized gradebook for this class + period.
+// ---------------------------------------------------------------------------
+router.post("/class/:classId/period/:periodId/unlock", async (req, res) => {
+  try {
+    const { classId, periodId } = req.params;
+
+    if (
+      !mongoose.isValidObjectId(classId) ||
+      !mongoose.isValidObjectId(periodId)
+    ) {
+      return res.status(400).json({ error: "Invalid class or period ID" });
+    }
+
+    const existing = await Gradebook.findOne({
+      class: classId,
+      academicPeriod: periodId,
+    });
+
+    if (!existing) {
+      return res.status(404).json({
+        error: "Gradebook is not currently finalized",
+      });
+    }
+
+    await Gradebook.deleteOne({
+      class: classId,
+      academicPeriod: periodId,
+    });
+
+    return res.json({
+      message: "Gradebook unlocked successfully",
+      finalized: false,
+    });
+  } catch (error) {
+    console.error("Error unlocking gradebook:", error.message);
+    return res.status(500).json({ error: "Failed to unlock gradebook" });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // GET /api/grades/student/me/class/:classId/period/:periodId
 // Returns a student's own grade for the given class + period.
 // Only resolves data if the gradebook is finalized AND complete.

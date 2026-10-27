@@ -309,10 +309,19 @@ export function getGradebookStatus(classId, periodId) {
 }
 
 /**
- * Teacher finalizes the gradebook for a class + period.
+ * Finalizes the gradebook for a class + period.
  */
 export function finalizeGradebook(classId, periodId) {
   return request(`/grades/class/${classId}/period/${periodId}/finalize`, {
+    method: "POST",
+  });
+}
+
+/**
+ * Admin: unlock a finalized gradebook for a class + period.
+ */
+export function unlockGradebook(classId, periodId) {
+  return request(`/grades/class/${classId}/period/${periodId}/unlock`, {
     method: "POST",
   });
 }

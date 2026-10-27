@@ -1,356 +1,678 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useSchoolData } from "../../context/SchoolDataContext";
-import { Save, BookOpen, Check, X } from "lucide-react";
+import {
+  BookOpen,
+  ClipboardList,
+  Loader2,
+  Save,
+  GraduationCap,
+} from "lucide-react";
 
-function AdminScores() {
-  const { classes, activities, scores, saveScores } = useSchoolData();
+import { useToast } from "../../context/ToastContext";
+import {
+  getClasses,
+  getAcademicPeriods,
+  getActivitiesByClass,
+  getScoresByActivity,
+  saveScore,
+  getClassGradesByPeriod,
+  finalizeGradebook,
+  unlockGradebook,
+} from "../../services/schoolDataService";
+import GradebookPanel from "../../components/gradebook/GradebookPanel";
+
+const CATEGORY_LABELS = {
+  written_work: "Written Work",
+  performance_task: "Performance Task",
+  assessment: "Assessment",
+};
+
+export default function AdminScores({ initialTab = null }) {
+  const { showToast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [scoreInputs, setScoreInputs] = useState({});
-  const [saved, setSaved] = useState(false);
+  const requestedClassId = searchParams.get("classId") || "";
+  const requestedPeriodId = searchParams.get("periodId") || "";
+  const requestedActivityId = searchParams.get("activityId") || "";
+  const requestedTab =
+    initialTab || searchParams.get("tab") || "scores";
 
-  const selectedClassId = searchParams.get("classId") || "";
-  const selectedActivityId = searchParams.get("activityId") || "";
+  const [classes, setClasses] = useState([]);
+  const [periods, setPeriods] = useState([]);
+  const [activities, setActivities] = useState([]);
 
-  const selectedClass = classes.find(
-    (classItem) => String(classItem.id) === String(selectedClassId)
-  );
+  const [selectedClassId, setSelectedClassId] = useState("");
+  const [selectedPeriodId, setSelectedPeriodId] = useState("");
+  const [selectedActivityId, setSelectedActivityId] = useState("");
 
-  const availableActivities = activities.filter(
-    (activity) =>
-      String(activity.classId) === String(selectedClassId)
-  );
+  const [scores, setScores] = useState({});
 
-  const selectedActivity = activities.find(
-    (activity) =>
-      String(activity.id) === String(selectedActivityId) &&
-      String(activity.classId) === String(selectedClassId)
-  );
+  const [gradebookData, setGradebookData] = useState(null);
+  const [loadingGradebook, setLoadingGradebook] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
+  const [unlocking, setUnlocking] = useState(false);
 
+  const [loading, setLoading] = useState(true);
+  const [loadingPeriods, setLoadingPeriods] = useState(false);
+  const [loadingActivities, setLoadingActivities] = useState(false);
+  const [loadingScores, setLoadingScores] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const [activeTab, setActiveTab] = useState(requestedTab);
+
+  /*
+   * Load all classes
+   */
   useEffect(() => {
-    if (!classes.length) return;
+    async function loadClasses() {
+      try {
+        setLoading(true);
+        const data = await getClasses();
+        setClasses(data || []);
 
-    const classId = searchParams.get("classId");
-    const activityId = searchParams.get("activityId");
+        if (data && data.length > 0) {
+          const requestedClass = data.find(
+            (item) => String(item._id || item.id) === String(requestedClassId)
+          );
 
-    const validClass = classes.some(
-      (item) => String(item.id) === String(classId)
-    );
-
-    if (!validClass) {
-      setSearchParams({}, { replace: true });
-      return;
-    }
-
-    if (activityId) {
-      const validActivity = activities.some(
-        (item) =>
-          String(item.id) === String(activityId) &&
-          String(item.classId) === String(classId)
-      );
-
-      if (!validActivity) {
-        setSearchParams({ classId }, { replace: true });
+          setSelectedClassId(
+            requestedClass?._id || data[0]._id
+          );
+        }
+      } catch (err) {
+        showToast(err.message, "error");
+      } finally {
+        setLoading(false);
       }
     }
-  }, [classes, activities, searchParams, setSearchParams]);
 
-  const handleClassChange = (e) => {
-    const classId = e.target.value;
+    loadClasses();
+  }, [requestedClassId, showToast]);
 
-    setScoreInputs({});
-    setSaved(false);
-
-    if (!classId) {
-      setSearchParams({}, { replace: false });
-      return;
-    }
-
-    setSearchParams({ classId }, { replace: false });
-  };
-
-  const handleActivityChange = (e) => {
-    const activityId = e.target.value;
-
-    setScoreInputs({});
-    setSaved(false);
-
-    if (!activityId) {
-      setSearchParams(
-        selectedClassId ? { classId: selectedClassId } : {},
-        { replace: false }
-      );
-      return;
-    }
-
-    setSearchParams(
-      {
-        classId: selectedClassId,
-        activityId,
-      },
-      { replace: false }
+  /*
+   * Selected class object
+   */
+  const selectedClass = useMemo(() => {
+    return classes.find(
+      (item) => String(item._id || item.id) === String(selectedClassId)
     );
-  };
+  }, [classes, selectedClassId]);
 
+  /*
+   * Load academic periods
+   */
   useEffect(() => {
-    if (!selectedClassId || !selectedActivityId) {
-      setScoreInputs({});
-      return;
+    async function loadPeriods() {
+      if (!selectedClass?.schoolYear) {
+        setPeriods([]);
+        setSelectedPeriodId("");
+        return;
+      }
+
+      try {
+        setLoadingPeriods(true);
+        const data = await getAcademicPeriods(selectedClass.schoolYear);
+        setPeriods(data || []);
+
+        const activePeriod = (data || []).find(
+          (period) => period.status === "active"
+        );
+
+        const requestedPeriod = (data || []).find(
+          (period) => String(period._id) === String(requestedPeriodId)
+        );
+
+        if (requestedPeriod) {
+          setSelectedPeriodId(requestedPeriod._id);
+        } else if (activePeriod) {
+          setSelectedPeriodId(activePeriod._id);
+        } else if (data && data.length > 0) {
+          setSelectedPeriodId(data[0]._id);
+        } else {
+          setSelectedPeriodId("");
+        }
+      } catch (err) {
+        showToast(err.message, "error");
+      } finally {
+        setLoadingPeriods(false);
+      }
     }
 
-    const existingScores = scores
-      .filter(
-        (item) =>
-          String(item.classId) === String(selectedClassId) &&
-          String(item.activityId) === String(selectedActivityId)
-      )
-      .reduce((result, item) => {
-        result[item.studentId] = String(item.score);
-        return result;
-      }, {});
+    loadPeriods();
+  }, [selectedClass, requestedPeriodId, showToast]);
 
-    setScoreInputs(existingScores);
-  }, [selectedClassId, selectedActivityId, scores]);
+  /*
+   * Load activities for selected class
+   */
+  useEffect(() => {
+    async function loadActivities() {
+      if (!selectedClassId) {
+        setActivities([]);
+        setSelectedActivityId("");
+        return;
+      }
 
-  const handleScoreChange = (studentId, value) => {
-    if (value === "") {
-      setScoreInputs((prev) => ({ ...prev, [studentId]: "" }));
-      setSaved(false);
-      return;
+      try {
+        setLoadingActivities(true);
+        const data = await getActivitiesByClass(selectedClassId);
+        setActivities(data || []);
+
+        const requestedActivity = (data || []).find(
+          (activity) => String(activity._id) === String(requestedActivityId)
+        );
+
+        setSelectedActivityId(requestedActivity?._id || "");
+      } catch (err) {
+        showToast(err.message, "error");
+      } finally {
+        setLoadingActivities(false);
+      }
     }
 
-    const numericValue = Number(value);
+    loadActivities();
+  }, [selectedClassId, requestedActivityId, showToast]);
 
-    if (
-      numericValue < 0 ||
-      (selectedActivity &&
-        numericValue > selectedActivity.totalPoints)
-    ) {
-      return;
-    }
+  /*
+   * Activities belonging to selected period
+   */
+  const filteredActivities = useMemo(() => {
+    if (!selectedPeriodId) return [];
 
-    setScoreInputs((prev) => ({
-      ...prev,
-      [studentId]: value,
-    }));
-    setSaved(false);
-  };
-
-  const handleSaveScores = async () => {
-    if (!selectedClassId || !selectedActivityId || !selectedActivity) {
-      return;
-    }
-
-    const hasInvalidScore = Object.values(scoreInputs).some((value) => {
-      if (value === "") return false;
-      const score = Number(value);
-      return score < 0 || score > selectedActivity.totalPoints;
+    return activities.filter((activity) => {
+      const pId =
+        activity.academicPeriod?._id ||
+        activity.academicPeriod ||
+        activity.academicPeriodId;
+      return String(pId) === String(selectedPeriodId);
     });
+  }, [activities, selectedPeriodId]);
 
-    if (hasInvalidScore) return;
+  /*
+   * Load existing scores for selected activity
+   */
+  useEffect(() => {
+    async function loadScores() {
+      if (!selectedActivityId) {
+        setScores({});
+        return;
+      }
+
+      try {
+        setLoadingScores(true);
+        const data = await getScoresByActivity(selectedActivityId);
+
+        const scoreMap = {};
+        (data || []).forEach((item) => {
+          const studentId = item.student?._id || item.student;
+          scoreMap[studentId] = {
+            score: item.score,
+            remarks: item.remarks || "",
+          };
+        });
+
+        setScores(scoreMap);
+      } catch (err) {
+        showToast(err.message, "error");
+      } finally {
+        setLoadingScores(false);
+      }
+    }
+
+    loadScores();
+  }, [selectedActivityId, showToast]);
+
+  /*
+   * Load gradebook data
+   */
+  const loadGradebook = useCallback(async () => {
+    if (!selectedClassId || !selectedPeriodId) {
+      setGradebookData(null);
+      return;
+    }
 
     try {
-      await saveScores({
-        classId: selectedClassId,
-        activityId: selectedActivityId,
-        scoreData: scoreInputs,
-      });
+      setLoadingGradebook(true);
+      const data = await getClassGradesByPeriod(
+        selectedClassId,
+        selectedPeriodId
+      );
+      setGradebookData(data);
+    } catch (err) {
+      showToast(err.message, "error");
+      setGradebookData(null);
+    } finally {
+      setLoadingGradebook(false);
+    }
+  }, [selectedClassId, selectedPeriodId, showToast]);
 
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } catch (error) {
-      alert(error.message);
+  useEffect(() => {
+    if (activeTab === "gradebook") {
+      loadGradebook();
+    }
+  }, [activeTab, loadGradebook]);
+
+  useEffect(() => {
+    if (activeTab === "gradebook") {
+      loadGradebook();
+    }
+  }, [selectedClassId, selectedPeriodId, loadGradebook]);
+
+  const selectedActivity = useMemo(() => {
+    return activities.find(
+      (activity) => String(activity._id) === String(selectedActivityId)
+    );
+  }, [activities, selectedActivityId]);
+
+  const handleScoreChange = (studentId, value) => {
+    setScores((previous) => ({
+      ...previous,
+      [studentId]: {
+        ...(previous[studentId] || {}),
+        score: value,
+      },
+    }));
+  };
+
+  /*
+   * Save all scores for selected activity
+   */
+  const handleSaveScores = async () => {
+    if (!selectedClassId) {
+      showToast("Please select a class.", "warning");
+      return;
+    }
+
+    if (!selectedActivity) {
+      showToast("Please select an activity.", "warning");
+      return;
+    }
+
+    const students = selectedClass?.students || [];
+
+    if (students.length === 0) {
+      showToast("There are no students enrolled in this class.", "warning");
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      for (const student of students) {
+        const studentId = student._id || student.id;
+        const rawScore = scores[studentId]?.score;
+
+        if (
+          rawScore === "" ||
+          rawScore === undefined ||
+          rawScore === null
+        ) {
+          continue;
+        }
+
+        const numericScore = Number(rawScore);
+
+        if (Number.isNaN(numericScore)) {
+          throw new Error(`Invalid score for ${student.name}.`);
+        }
+
+        if (numericScore < 0) {
+          throw new Error(
+            `Score for ${student.name} cannot be negative.`
+          );
+        }
+
+        if (numericScore > Number(selectedActivity.totalPoints)) {
+          throw new Error(
+            `Score for ${student.name} cannot exceed ${selectedActivity.totalPoints}.`
+          );
+        }
+
+        await saveScore({
+          studentId,
+          classId: selectedClassId,
+          activityId: selectedActivityId,
+          score: numericScore,
+          remarks: scores[studentId]?.remarks || "",
+        });
+      }
+
+      showToast("Scores saved successfully.", "success");
+    } catch (err) {
+      showToast(err.message, "error");
+    } finally {
+      setSaving(false);
     }
   };
 
-  const canEnterScores = selectedClass && selectedActivity;
+  /*
+   * Finalize gradebook (Lock)
+   */
+  const handleFinalize = async () => {
+    if (!selectedClassId || !selectedPeriodId) return;
+
+    try {
+      setFinalizing(true);
+      await finalizeGradebook(selectedClassId, selectedPeriodId);
+      showToast("Gradebook finalized and locked successfully.", "success");
+      await loadGradebook();
+    } catch (err) {
+      showToast(err.message, "error");
+    } finally {
+      setFinalizing(false);
+    }
+  };
+
+  /*
+   * Unlock gradebook
+   */
+  const handleUnlock = async () => {
+    if (!selectedClassId || !selectedPeriodId) return;
+
+    try {
+      setUnlocking(true);
+      await unlockGradebook(selectedClassId, selectedPeriodId);
+      showToast("Gradebook unlocked successfully. Grade editing enabled.", "success");
+      await loadGradebook();
+    } catch (err) {
+      showToast(err.message, "error");
+    } finally {
+      setUnlocking(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[400px] items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+      </div>
+    );
+  }
 
   return (
-    <div>
-      {saved && (
-        <div className="fixed right-4 top-4 z-50 w-[calc(100%-2rem)] max-w-sm">
-          <div className="flex items-start gap-3 rounded-lg border border-green-200 bg-white p-4 shadow-lg">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-green-100">
-              <Check size={18} className="text-green-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-gray-800">Success</p>
-              <p className="mt-0.5 text-sm text-gray-500">
-                Scores saved successfully.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setSaved(false)}
-              className="ml-auto shrink-0 rounded-md p-1 text-gray-400 hover:bg-gray-100"
-            >
-              <X size={16} />
-            </button>
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <div className="flex items-center gap-3">
+          <div className="rounded-xl bg-blue-100 p-3">
+            <ClipboardList className="h-6 w-6 text-blue-600" />
           </div>
+
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800">
+              Scores &amp; Gradebook
+            </h1>
+
+            <p className="text-sm text-gray-500">
+              Manage student scores and review, finalize, or unlock class gradebooks.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="rounded-2xl border bg-white p-5 shadow-sm">
+        <div className="grid gap-4 md:grid-cols-3">
+          {/* Class */}
+          <div>
+            <label className="mb-2 block text-sm font-medium text-gray-700">
+              Class
+            </label>
+
+            <select
+              value={selectedClassId}
+              onChange={(event) =>
+                setSelectedClassId(event.target.value)
+              }
+              className="w-full rounded-lg border px-3 py-2.5 outline-none focus:border-blue-500"
+            >
+              <option value="">Select class</option>
+
+              {classes.map((item) => (
+                <option key={item._id} value={item._id}>
+                  Grade {item.gradeLevel} - {item.name} {item.section}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Academic period */}
+          <div>
+            <label className="mb-2 block text-sm font-medium text-gray-700">
+              Academic Period
+            </label>
+
+            <select
+              value={selectedPeriodId}
+              onChange={(event) =>
+                setSelectedPeriodId(event.target.value)
+              }
+              disabled={loadingPeriods}
+              className="w-full rounded-lg border px-3 py-2.5 outline-none focus:border-blue-500"
+            >
+              <option value="">Select academic period</option>
+
+              {periods.map((period) => (
+                <option key={period._id} value={period._id}>
+                  {period.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Activity – only shown in Scores tab */}
+          {activeTab === "scores" && (
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-700">
+                Activity
+              </label>
+
+              <select
+                value={selectedActivityId}
+                onChange={(event) =>
+                  setSelectedActivityId(event.target.value)
+                }
+                disabled={loadingActivities || !selectedPeriodId}
+                className="w-full rounded-lg border px-3 py-2.5 outline-none focus:border-blue-500"
+              >
+                <option value="">Select activity</option>
+
+                {filteredActivities.map((activity) => (
+                  <option key={activity._id} value={activity._id}>
+                    {activity.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Tab bar */}
+      {selectedClassId && selectedPeriodId && (
+        <div className="flex gap-1 rounded-xl border bg-white p-1 shadow-sm">
+          <TabButton
+            active={activeTab === "scores"}
+            onClick={() => setActiveTab("scores")}
+            icon={<BookOpen className="h-4 w-4" />}
+            label="Score Entry"
+          />
+          <TabButton
+            active={activeTab === "gradebook"}
+            onClick={() => setActiveTab("gradebook")}
+            icon={<GraduationCap className="h-4 w-4" />}
+            label="Gradebook"
+          />
         </div>
       )}
 
-      <div>
-        <h1 className="text-2xl font-bold text-gray-800">Scores</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Enter and manage student scores.
-        </p>
-      </div>
+      {/* ============================================================ */}
+      {/* TAB: SCORES                                                  */}
+      {/* ============================================================ */}
+      {activeTab === "scores" && (
+        <>
+          {/* Activity information */}
+          {selectedActivity && (
+            <div className="rounded-2xl border bg-white p-5 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <BookOpen className="h-5 w-5 text-blue-600" />
+                    <h2 className="font-semibold text-gray-800">
+                      {selectedActivity.title}
+                    </h2>
+                  </div>
 
-      <div className="mt-6 rounded-lg border bg-white p-5 shadow-sm">
-        <div className="grid gap-5 md:grid-cols-2">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Class
-            </label>
-            <select
-              value={selectedClassId}
-              onChange={handleClassChange}
-              className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-blue-500"
-            >
-              <option value="">Select a class</option>
-              {classes.map((classItem) => (
-                <option key={classItem.id} value={classItem.id}>
-                  {classItem.name}
-                </option>
-              ))}
-            </select>
-          </div>
+                  <p className="mt-1 text-sm text-gray-500">
+                    {selectedActivity.type}
+                    {selectedActivity.gradingCategory && (
+                      <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
+                        {CATEGORY_LABELS[selectedActivity.gradingCategory] ||
+                          selectedActivity.gradingCategory}
+                      </span>
+                    )}
+                  </p>
+                </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Activity
-            </label>
-            <select
-              value={selectedActivityId}
-              onChange={handleActivityChange}
-              disabled={!selectedClassId}
-              className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none disabled:bg-gray-100 focus:border-blue-500"
-            >
-              <option value="">Select an activity</option>
-              {availableActivities.map((activity) => (
-                <option key={activity.id} value={activity.id}>
-                  {activity.title} — {activity.totalPoints} pts
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {canEnterScores ? (
-        <div className="mt-6 overflow-hidden rounded-lg border bg-white shadow-sm">
-          <div className="flex flex-col gap-3 border-b p-5 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <BookOpen size={20} className="text-blue-600" />
-                <h2 className="font-semibold text-gray-800">
-                  {selectedActivity.title}
-                </h2>
+                <div className="rounded-lg bg-gray-100 px-4 py-2 text-sm">
+                  Total Points:{" "}
+                  <span className="font-semibold">
+                    {selectedActivity.totalPoints}
+                  </span>
+                </div>
               </div>
+            </div>
+          )}
+
+          {/* Scores table */}
+          {selectedActivity && selectedClass && (
+            <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[600px]">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-5 py-4 text-left text-sm font-semibold text-gray-700">
+                        Student
+                      </th>
+                      <th className="px-5 py-4 text-left text-sm font-semibold text-gray-700">
+                        Student ID
+                      </th>
+                      <th className="px-5 py-4 text-left text-sm font-semibold text-gray-700">
+                        Score
+                      </th>
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y">
+                    {selectedClass.students?.map((student) => {
+                      const studentId = student._id || student.id;
+
+                      return (
+                        <tr key={studentId}>
+                          <td className="px-5 py-4">
+                            <div className="font-medium text-gray-800">
+                              {student.name}
+                            </div>
+                          </td>
+
+                          <td className="px-5 py-4 text-sm text-gray-500">
+                            {student.studentId}
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <input
+                              type="number"
+                              min="0"
+                              max={selectedActivity.totalPoints}
+                              value={scores[studentId]?.score ?? ""}
+                              onChange={(event) =>
+                                handleScoreChange(
+                                  studentId,
+                                  event.target.value
+                                )
+                              }
+                              className="w-28 rounded-lg border px-3 py-2 outline-none focus:border-blue-500"
+                              placeholder="Score"
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Save */}
+              <div className="flex justify-end border-t bg-gray-50 p-4">
+                <button
+                  type="button"
+                  onClick={handleSaveScores}
+                  disabled={saving || loadingScores}
+                  className="flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {saving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4" />
+                      Save Scores
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Empty state */}
+          {!selectedActivity && (
+            <div className="rounded-2xl border border-dashed bg-white p-10 text-center">
+              <ClipboardList className="mx-auto h-10 w-10 text-gray-400" />
+              <h2 className="mt-3 font-semibold text-gray-700">
+                Select an activity
+              </h2>
               <p className="mt-1 text-sm text-gray-500">
-                {selectedClass.name} · {selectedActivity.totalPoints} points
+                Select a class, academic period, and activity to enter student scores.
               </p>
             </div>
+          )}
+        </>
+      )}
 
-            <button
-              type="button"
-              onClick={handleSaveScores}
-              className="flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700"
-            >
-              <Save size={17} />
-              Save Scores
-            </button>
-          </div>
-
-          <div className="w-full overflow-hidden">
-            <table className="w-full table-fixed text-left">
-              <colgroup>
-                <col className="w-[55%]" />
-                <col className="w-[25%]" />
-                <col className="w-[20%]" />
-              </colgroup>
-
-              <thead className="border-b bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-xs font-semibold uppercase text-gray-500 sm:px-5">
-                    Student
-                  </th>
-                  <th className="px-4 py-3 text-xs font-semibold uppercase text-gray-500 sm:px-5">
-                    Score
-                  </th>
-                  <th className="px-4 py-3 text-xs font-semibold uppercase text-gray-500 sm:px-5">
-                    Percentage
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody className="divide-y">
-                {selectedClass.students.map((student) => {
-                  const score = scoreInputs[student.id];
-                  const percentage =
-                    score !== undefined && score !== ""
-                      ? (
-                          (Number(score) /
-                            selectedActivity.totalPoints) *
-                          100
-                        ).toFixed(1)
-                      : "—";
-
-                  return (
-                    <tr key={student.id} className="hover:bg-gray-50">
-                      <td className="min-w-0 px-4 py-3 sm:px-5 sm:py-4">
-                        <p className="truncate text-sm font-medium text-gray-800">
-                          {student.name}
-                        </p>
-                      </td>
-
-                      <td className="px-4 py-3 sm:px-5 sm:py-4">
-                        <div className="flex items-center gap-1.5 whitespace-nowrap">
-                          <input
-                            type="number"
-                            min="0"
-                            max={selectedActivity.totalPoints}
-                            value={scoreInputs[student.id] ?? ""}
-                            onChange={(e) =>
-                              handleScoreChange(
-                                student.id,
-                                e.target.value
-                              )
-                            }
-                            placeholder="0"
-                            className="w-16 rounded-md border border-gray-300 px-2.5 py-2 text-sm outline-none focus:border-blue-500 sm:w-20"
-                          />
-                          <span className="text-sm text-gray-500">
-                            / {selectedActivity.totalPoints}
-                          </span>
-                        </div>
-                      </td>
-
-                      <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-600 sm:px-5 sm:py-4">
-                        {percentage === "—" ? "—" : `${percentage}%`}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : (
-        <div className="mt-6 rounded-lg border bg-white p-10 text-center shadow-sm">
-          <BookOpen size={40} className="mx-auto text-gray-400" />
-          <h2 className="mt-4 font-semibold text-gray-700">
-            Select a class and activity
-          </h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Choose a class and activity above to enter student scores.
-          </p>
-        </div>
+      {/* ============================================================ */}
+      {/* TAB: GRADEBOOK                                               */}
+      {/* ============================================================ */}
+      {activeTab === "gradebook" && (
+        <GradebookPanel
+          classRecord={selectedClass}
+          periodId={selectedPeriodId}
+          gradebookData={gradebookData}
+          loading={loadingGradebook}
+          finalizing={finalizing}
+          unlocking={unlocking}
+          onFinalize={handleFinalize}
+          onUnlock={handleUnlock}
+          isAdmin={true}
+        />
       )}
     </div>
   );
 }
 
-export default AdminScores;
+function TabButton({ active, onClick, icon, label }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
+        active
+          ? "bg-blue-600 text-white shadow-sm"
+          : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}

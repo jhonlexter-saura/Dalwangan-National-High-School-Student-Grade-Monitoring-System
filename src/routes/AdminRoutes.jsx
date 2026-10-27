@@ -16,11 +16,16 @@ import AdminUserEdit from "../pages/admin/AdminUserEdit";
 import AdminAcademicCalendar from "../pages/admin/AdminAcademicCalendar";
 import AdminAllAccounts from "../pages/admin/AdminAllAccounts";
 import AdminIntegrations from "../pages/admin/AdminIntegrations";
+import AdminMonitor from "../pages/admin/AdminMonitor";
 
 const adminRoutes = [
   {
     path: "/admin",
     element: <AdminDashboard />,
+  },
+  {
+    path: "/admin/monitor",
+    element: <AdminMonitor />,
   },
   {
     path: "/admin/classes",
@@ -83,8 +88,8 @@ const adminRoutes = [
     element: <AdminUserEdit />,
   },
   {
-  path: "/admin/integrations",
-  element: <AdminIntegrations />,
+    path: "/admin/integrations",
+    element: <AdminIntegrations />,
   },
 ];
 

@@ -12,6 +12,7 @@ import {
   X,
   CalendarDays,
   Plug,
+  Monitor,
 } from "lucide-react";
 
 import { NavLink } from "react-router-dom";
@@ -137,6 +138,16 @@ function Sidebar({ isOpen, onClose }) {
                   onClick={onClose}
                 />
               </>
+            )}
+
+            {/* ADMIN ONLY - Monitor */}
+            {role === "admin" && (
+              <NavItem
+                to="/admin/monitor"
+                icon={<Monitor size={20} />}
+                label="Monitor"
+                onClick={onClose}
+              />
             )}
 
             {/* STUDENT */}
