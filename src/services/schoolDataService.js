@@ -35,6 +35,23 @@ export function createClass(data) {
     body: JSON.stringify(data),
   });
 }
+export function getClassById(classId) {
+  return request(`/classes/${classId}`);
+}
+
+export function updateClass(classId, data) {
+  return request(`/classes/${classId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteClass(classId) {
+  return request(`/classes/${classId}`, {
+    method: "DELETE",
+  });
+}
+
 
 export function getSubjectAssignments() {
   return request("/subject-assignments");
@@ -54,6 +71,12 @@ export function createSubjectAssignment(data) {
     body: JSON.stringify(data),
   });
 }
+export function deleteSubjectAssignment(assignmentId) {
+  return request(`/subject-assignments/${assignmentId}`, {
+    method: "DELETE",
+  });
+}
+
 
 export function updateSubjectAssignment(id, data) {
   return request(`/subject-assignments/${id}`, {

@@ -134,4 +134,21 @@ router.patch("/:id", requireAdmin, async (req, res) => {
   }
 });
 
+router.delete("/:id", requireAdmin, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: "Invalid subject assignment ID" });
+    }
+    const assignment = await SubjectAssignment.findById(req.params.id);
+    if (!assignment) {
+      return res.status(404).json({ error: "Subject assignment not found" });
+    }
+    await SubjectAssignment.findByIdAndDelete(req.params.id);
+    return res.json({ message: "Subject assignment removed successfully" });
+  } catch (error) {
+    console.error("Failed to delete subject assignment:", error.message);
+    return res.status(500).json({ error: "Failed to delete subject assignment" });
+  }
+});
+
 module.exports = router;

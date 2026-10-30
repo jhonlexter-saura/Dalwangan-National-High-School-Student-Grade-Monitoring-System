@@ -16,25 +16,25 @@ const teacherRoutes = [
     element: <TeacherClasses />,
   },
   {
-    path: "teacher/classes/:classId",
+    path: "/teacher/classes/:classId",
     element: <TeacherClassDetails />,
   },
   {
-    path: "teacher/activities",
+    path: "/teacher/activities",
     element: <TeacherActivities />,
   },
   {
-    path: "teacher/scores",
+    path: "/teacher/scores",
     element: <TeacherScores />,
   },
   {
-    path: "teacher/profile",
+    path: "/teacher/profile",
     element: <TeacherProfile />,
   },
   {
-    path: "teacher/notifications",
+    path: "/teacher/notifications",
     element: <Notifications />,
   },
 ];
 
-export {teacherRoutes};
+export { teacherRoutes };

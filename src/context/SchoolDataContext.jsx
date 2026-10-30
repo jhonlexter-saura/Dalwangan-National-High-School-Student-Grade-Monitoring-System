@@ -4,6 +4,8 @@ import {
   getActivities,
   getScores,
   createClass as apiCreateClass,
+  updateClass as apiUpdateClass,
+  deleteClass as apiDeleteClass,
   createStudent,
   addStudentToClass,
   createActivity as apiCreateActivity,
@@ -85,6 +87,23 @@ export function SchoolDataProvider({ children }) {
     return newClass;
   };
 
+
+  const handleUpdateClass = async (classId, classData) => {
+    const updated = await apiUpdateClass(classId, classData);
+    const normalized = normalizeClass(updated);
+    setClasses((prev) =>
+      prev.map((item) => (String(item.id || item._id) === String(classId) ? normalized : item))
+    );
+    return normalized;
+  };
+
+  const handleDeleteClass = async (classId) => {
+    await apiDeleteClass(classId);
+    setClasses((prev) =>
+      prev.filter((item) => String(item.id || item._id) !== String(classId))
+    );
+  };
+
   const handleInviteStudent = async (classId, studentData) => {
     const student = await createStudent(studentData);
     const result = await addStudentToClass(student._id, classId);
@@ -147,6 +166,8 @@ export function SchoolDataProvider({ children }) {
         error,
         reloadData: loadData,
         createClass: handleCreateClass,
+        updateClass: handleUpdateClass,
+        deleteClass: handleDeleteClass,
         inviteStudent: handleInviteStudent,
         createActivity: handleCreateActivity,
         saveScores: handleSaveScores,

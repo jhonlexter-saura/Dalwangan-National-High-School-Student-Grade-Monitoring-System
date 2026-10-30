@@ -219,4 +219,49 @@ router.post("/", async (req, res) => {
   }
 });
 
+// UPDATE class
+router.put("/:id", async (req, res) => {
+  try {
+    const { name, section, gradeLevel, schoolYear } = req.body;
+    const updateData = {};
+    if (name) updateData.name = name.trim();
+    if (section) updateData.section = section.trim();
+    if (gradeLevel !== undefined) updateData.gradeLevel = Number(gradeLevel);
+    if (schoolYear) updateData.schoolYear = schoolYear.trim();
+
+    const updated = await Class.findByIdAndUpdate(
+      req.params.id,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    )
+      .populate("teacher")
+      .populate("students");
+
+    if (!updated) {
+      return res.status(404).json({ error: "Class not found" });
+    }
+
+    res.json(updated);
+  } catch (error) {
+    console.error("Error updating class:", error.message);
+    res.status(500).json({ error: "Failed to update class" });
+  }
+});
+
+// DELETE class
+router.delete("/:id", async (req, res) => {
+  try {
+    const classData = await Class.findById(req.params.id);
+    if (!classData) {
+      return res.status(404).json({ error: "Class not found" });
+    }
+
+    await Class.findByIdAndDelete(req.params.id);
+    res.json({ message: "Class deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting class:", error.message);
+    res.status(500).json({ error: "Failed to delete class" });
+  }
+});
+
 module.exports = router;
