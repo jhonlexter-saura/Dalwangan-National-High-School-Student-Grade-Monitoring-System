@@ -14,6 +14,13 @@ const scoreSchema = new mongoose.Schema(
       required: true,
     },
 
+    subjectAssignment: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "SubjectAssignment",
+      default: null,
+      index: true,
+    },
+
     activity: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Activity",

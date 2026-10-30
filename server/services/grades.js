@@ -1,6 +1,7 @@
 const Activity = require("../models/Activity");
 const Class = require("../models/Class");
 const Score = require("../models/Score");
+const SubjectAssignment = require("../models/SubjectAssignment");
 
 const CATEGORY_KEYS = [
   "written_work",
@@ -46,8 +47,9 @@ function calculateStudentGradeFromActivities({
   classRecord,
   activities,
   scoresByActivityId,
+  gradingSystem,
 }) {
-  const categoryWeights = getCategoryWeights(classRecord?.gradingSystem);
+  const categoryWeights = getCategoryWeights(gradingSystem || classRecord?.gradingSystem);
   const categorySummary = buildCategorySummary(categoryWeights);
 
   activities.forEach((activity) => {
@@ -86,6 +88,50 @@ function calculateStudentGradeFromActivities({
     categories: categorySummary,
     finalGrade: Number(finalGrade.toFixed(2)),
   };
+}
+
+async function isAssignmentGradebookComplete(subjectAssignmentId, academicPeriodId) {
+  const activities = await Activity.find({
+    subjectAssignment: subjectAssignmentId,
+    academicPeriod: academicPeriodId,
+  }).select("gradingCategory totalPoints").lean();
+  const presentCategories = new Set(
+    activities.filter((activity) => Number(activity.totalPoints || 0) > 0)
+      .map((activity) => activity.gradingCategory)
+  );
+  const missingCategories = CATEGORY_KEYS.filter((key) => !presentCategories.has(key));
+  return { complete: missingCategories.length === 0, missingCategories };
+}
+
+async function calculateAssignmentGrades(subjectAssignmentId, studentId = null, academicPeriodId = null) {
+  const assignment = await SubjectAssignment.findById(subjectAssignmentId).lean();
+  if (!assignment) throw new Error("Subject assignment not found");
+  const classRecord = await Class.findById(assignment.class).lean();
+  if (!classRecord) throw new Error("Class not found");
+
+  const activityQuery = { subjectAssignment: subjectAssignmentId };
+  if (academicPeriodId) activityQuery.academicPeriod = academicPeriodId;
+  const activities = await Activity.find(activityQuery).lean();
+  const scores = await Score.find({ subjectAssignment: subjectAssignmentId }).lean();
+  const scoreMapByStudent = new Map();
+  scores.forEach((score) => {
+    const studentKey = String(score.student);
+    if (!scoreMapByStudent.has(studentKey)) scoreMapByStudent.set(studentKey, new Map());
+    scoreMapByStudent.get(studentKey).set(String(score.activity), score);
+  });
+
+  const studentIds = studentId
+    ? [String(studentId)]
+    : (classRecord.students || []).map(String);
+  return studentIds.map((studentKey) => ({
+    studentId: studentKey,
+    ...calculateStudentGradeFromActivities({
+      classRecord,
+      gradingSystem: assignment.gradingSystem,
+      activities,
+      scoresByActivityId: scoreMapByStudent.get(studentKey) || new Map(),
+    }),
+  }));
 }
 
 /**
@@ -171,7 +217,9 @@ async function calculateClassGrades(classId, studentId = null, academicPeriodId 
 
 module.exports = {
   calculateClassGrades,
+  calculateAssignmentGrades,
   calculateStudentGradeFromActivities,
   getCategoryWeights,
   isGradebookComplete,
+  isAssignmentGradebookComplete,
 };

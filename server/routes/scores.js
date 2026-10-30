@@ -3,6 +3,9 @@ const Score = require("../models/Score");
 const Student = require("../models/Student");
 const Class = require("../models/Class");
 const Activity = require("../models/Activity");
+const SubjectAssignment = require("../models/SubjectAssignment");
+const Teacher = require("../models/Teacher");
+const { requireAuthenticatedUser } = require("../middleware/authorization");
 
 const router = express.Router();
 
@@ -62,12 +65,26 @@ router.get("/activity/:activityId", async (req, res) => {
   }
 });
 
+router.get("/assignment/:assignmentId", async (req, res) => {
+  try {
+    const scores = await Score.find({ subjectAssignment: req.params.assignmentId })
+      .populate("student")
+      .populate("activity")
+      .sort({ createdAt: -1 });
+    return res.json(scores);
+  } catch (error) {
+    console.error("Error fetching assignment scores:", error.message);
+    return res.status(500).json({ error: "Failed to fetch assignment scores" });
+  }
+});
+
 // CREATE or update a score
-router.post("/", async (req, res) => {
+router.post("/", requireAuthenticatedUser, async (req, res) => {
   try {
     const {
       studentId,
       classId,
+      subjectAssignmentId,
       activityId,
       score,
       remarks,
@@ -76,6 +93,7 @@ router.post("/", async (req, res) => {
     if (
       !studentId ||
       !classId ||
+      !subjectAssignmentId ||
       !activityId ||
       score === undefined
     ) {
@@ -87,6 +105,11 @@ router.post("/", async (req, res) => {
     const student = await Student.findById(studentId);
     const classData = await Class.findById(classId);
     const activity = await Activity.findById(activityId);
+    const subjectAssignment = await SubjectAssignment.findOne({
+      _id: subjectAssignmentId,
+      class: classId,
+      active: true,
+    });
 
     if (!student) {
       return res.status(404).json({
@@ -106,6 +129,19 @@ router.post("/", async (req, res) => {
       });
     }
 
+    if (
+      !subjectAssignment ||
+      String(activity.subjectAssignment) !== String(subjectAssignment._id)
+    ) {
+      return res.status(400).json({ error: "Activity does not belong to this subject assignment" });
+    }
+    if (req.authenticatedUser.role !== "admin") {
+      const teacher = await Teacher.findOne({ user: req.authenticatedUser._id }).select("_id").lean();
+      if (req.authenticatedUser.role !== "teacher" || !teacher || String(subjectAssignment.teacher) !== String(teacher._id)) {
+        return res.status(403).json({ error: "You can only enter scores for your subject assignments" });
+      }
+    }
+
     if (Number(score) < 0 || Number(score) > activity.totalPoints) {
       return res.status(400).json({
         error: `Score must be between 0 and ${activity.totalPoints}`,
@@ -120,6 +156,7 @@ router.post("/", async (req, res) => {
       {
         student: studentId,
         class: classId,
+        subjectAssignment: subjectAssignmentId,
         activity: activityId,
         score: Number(score),
         remarks: remarks || "",
@@ -132,6 +169,7 @@ router.post("/", async (req, res) => {
     )
       .populate("student")
       .populate("class")
+      .populate("subjectAssignment")
       .populate("activity");
 
     res.status(200).json(savedScore);

@@ -36,6 +36,32 @@ export function createClass(data) {
   });
 }
 
+export function getSubjectAssignments() {
+  return request("/subject-assignments");
+}
+
+export function getSubjectAssignmentsByClass(classId) {
+  return request(`/subject-assignments/class/${classId}`);
+}
+
+export function getSubjectAssignmentsByTeacher(userId) {
+  return request(`/subject-assignments/teacher/${userId}`);
+}
+
+export function createSubjectAssignment(data) {
+  return request("/subject-assignments", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateSubjectAssignment(id, data) {
+  return request(`/subject-assignments/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
 // -----------------------------
 // Students
 // -----------------------------
@@ -68,6 +94,12 @@ export function addStudentToClass(studentId, classId) {
   });
 }
 
+export function removeStudentFromClass(studentId, classId) {
+  return request(`/students/${studentId}/classes/${classId}`, {
+    method: "DELETE",
+  });
+}
+
 export function addStudentsToClass(studentIds, classId) {
   return request(`/students/batch/classes/${classId}`, {
     method: "POST",
@@ -85,6 +117,10 @@ export function getActivities() {
 
 export function getActivitiesByClass(classId) {
   return request(`/activities/class/${classId}`);
+}
+
+export function getActivitiesByAssignment(assignmentId) {
+  return request(`/activities/assignment/${assignmentId}`);
 }
 
 export function createActivity(data) {
@@ -306,6 +342,32 @@ export function getClassGradesByPeriod(classId, periodId) {
  */
 export function getGradebookStatus(classId, periodId) {
   return request(`/grades/class/${classId}/period/${periodId}/status`);
+}
+
+export function getAssignmentGradebook(assignmentId, periodId) {
+  return request(`/grades/assignment/${assignmentId}/period/${periodId}`);
+}
+
+export function getAssignmentGradebookStatus(assignmentId, periodId) {
+  return request(`/grades/assignment/${assignmentId}/period/${periodId}/status`);
+}
+
+export function finalizeSubjectGradebook(assignmentId, periodId) {
+  return request(`/grades/assignment/${assignmentId}/period/${periodId}/finalize`, {
+    method: "POST",
+  }).then((result) => {
+    window.dispatchEvent(new Event("dnhs:notifications-updated"));
+    return result;
+  });
+}
+
+export function unlockSubjectGradebook(assignmentId, periodId) {
+  return request(`/grades/assignment/${assignmentId}/period/${periodId}/unlock`, {
+    method: "POST",
+  }).then((result) => {
+    window.dispatchEvent(new Event("dnhs:notifications-updated"));
+    return result;
+  });
 }
 
 /**

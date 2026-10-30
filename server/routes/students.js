@@ -521,4 +521,24 @@ router.post(
   }
 );
 
+router.delete("/:studentId/classes/:classId", requireAdmin, async (req, res) => {
+  try {
+    const { studentId, classId } = req.params;
+    if (!mongoose.isValidObjectId(studentId) || !mongoose.isValidObjectId(classId)) {
+      return res.status(400).json({ error: "Invalid student or class ID" });
+    }
+    const classData = await Class.findById(classId);
+    if (!classData) return res.status(404).json({ error: "Class not found" });
+    if (!(classData.students || []).some((id) => String(id) === String(studentId))) {
+      return res.status(404).json({ error: "Student is not enrolled in this class" });
+    }
+    classData.students = classData.students.filter((id) => String(id) !== String(studentId));
+    await classData.save();
+    return res.json({ message: "Student removed from class", classId, studentId });
+  } catch (error) {
+    console.error("Remove student from class error:", error.message);
+    return res.status(500).json({ error: "Failed to remove student from class" });
+  }
+});
+
 module.exports = router;

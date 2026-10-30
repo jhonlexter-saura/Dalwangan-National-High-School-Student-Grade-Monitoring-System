@@ -1,13 +1,19 @@
 const express = require("express");
 const mongoose = require("mongoose");
 
-const { calculateClassGrades, isGradebookComplete } = require("../services/grades");
+const {
+  calculateClassGrades,
+  isGradebookComplete,
+  calculateAssignmentGrades,
+  isAssignmentGradebookComplete,
+} = require("../services/grades");
 const Gradebook = require("../models/Gradebook");
 const Class = require("../models/Class");
 const Student = require("../models/Student");
 const Teacher = require("../models/Teacher");
 const AcademicPeriod = require("../models/AcademicPeriod");
 const Notification = require("../models/Notification");
+const SubjectAssignment = require("../models/SubjectAssignment");
 const {
   getTokenUserId,
   requireAuthenticatedUser,
@@ -41,6 +47,146 @@ async function createNotifications(recipientIds, details) {
     console.error("Failed to create grade notifications:", error.message);
   }
 }
+
+router.get("/assignment/:assignmentId/period/:periodId", requireAuthenticatedUser, async (req, res) => {
+  try {
+    const { assignmentId, periodId } = req.params;
+    const assignment = await SubjectAssignment.findById(assignmentId).populate("teacher", "user").lean();
+    if (!assignment) return res.status(404).json({ error: "Subject assignment not found" });
+    if (req.authenticatedUser.role !== "admin" && (req.authenticatedUser.role !== "teacher" || String(assignment.teacher?.user) !== String(req.authenticatedUser._id))) {
+      return res.status(403).json({ error: "You can only view gradebooks for your subject assignments" });
+    }
+    const [completeness, gradebook] = await Promise.all([
+      isAssignmentGradebookComplete(assignmentId, periodId),
+      Gradebook.findOne({ subjectAssignment: assignmentId, academicPeriod: periodId }).lean(),
+    ]);
+    const grades = completeness.complete
+      ? await calculateAssignmentGrades(assignmentId, null, periodId)
+      : [];
+    return res.json({
+      grades,
+      complete: completeness.complete,
+      missingCategories: completeness.missingCategories,
+      finalized: Boolean(gradebook),
+      finalizedAt: gradebook?.finalizedAt || null,
+    });
+  } catch (error) {
+    console.error("Error fetching subject gradebook:", error.message);
+    return res.status(error.message === "Subject assignment not found" ? 404 : 500)
+      .json({ error: error.message || "Failed to fetch subject gradebook" });
+  }
+});
+
+router.get("/assignment/:assignmentId/period/:periodId/status", requireAuthenticatedUser, async (req, res) => {
+  try {
+    const { assignmentId, periodId } = req.params;
+    const assignment = await SubjectAssignment.findById(assignmentId).populate("teacher", "user").lean();
+    if (!assignment) return res.status(404).json({ error: "Subject assignment not found" });
+    if (req.authenticatedUser.role !== "admin" && (req.authenticatedUser.role !== "teacher" || String(assignment.teacher?.user) !== String(req.authenticatedUser._id))) {
+      return res.status(403).json({ error: "You can only view gradebooks for your subject assignments" });
+    }
+    const [completeness, gradebook] = await Promise.all([
+      isAssignmentGradebookComplete(assignmentId, periodId),
+      Gradebook.findOne({ subjectAssignment: assignmentId, academicPeriod: periodId }).lean(),
+    ]);
+    return res.json({
+      complete: completeness.complete,
+      missingCategories: completeness.missingCategories,
+      finalized: Boolean(gradebook),
+      finalizedAt: gradebook?.finalizedAt || null,
+    });
+  } catch (error) {
+    console.error("Error fetching subject gradebook status:", error.message);
+    return res.status(500).json({ error: "Failed to fetch gradebook status" });
+  }
+});
+
+router.post("/assignment/:assignmentId/period/:periodId/finalize", requireAuthenticatedUser, async (req, res) => {
+  try {
+    const { assignmentId, periodId } = req.params;
+    if (!mongoose.isValidObjectId(assignmentId) || !mongoose.isValidObjectId(periodId)) {
+      return res.status(400).json({ error: "Invalid subject assignment or period ID" });
+    }
+    const assignment = await SubjectAssignment.findById(assignmentId)
+      .populate("class")
+      .populate("teacher", "user name")
+      .lean();
+    if (!assignment || !assignment.class) return res.status(404).json({ error: "Subject assignment not found" });
+    const user = req.authenticatedUser;
+    if (!["admin", "teacher"].includes(user.role)) {
+      return res.status(403).json({ error: "Teacher or administrator access is required" });
+    }
+    if (user.role === "teacher" && String(assignment.teacher?.user) !== String(user._id)) {
+      return res.status(403).json({ error: "You can only finalize your own subject assignments" });
+    }
+    const completeness = await isAssignmentGradebookComplete(assignmentId, periodId);
+    if (!completeness.complete) {
+      return res.status(422).json({
+        error: `Cannot finalize: missing activities for ${completeness.missingCategories.join(", ")}`,
+        missingCategories: completeness.missingCategories,
+      });
+    }
+    const existing = await Gradebook.findOne({ subjectAssignment: assignmentId, academicPeriod: periodId });
+    if (existing) return res.status(409).json({ error: "This subject gradebook has already been finalized", finalizedAt: existing.finalizedAt });
+
+    const gradebook = await Gradebook.create({
+      class: assignment.class._id,
+      subjectAssignment: assignment._id,
+      academicPeriod: periodId,
+      finalizedAt: new Date(),
+      finalizedBy: user._id,
+    });
+    try {
+      const [students, period] = await Promise.all([
+        Student.find({ _id: { $in: assignment.class.students || [] }, user: { $ne: null } }).select("user").lean(),
+        AcademicPeriod.findById(periodId).select("name").lean(),
+      ]);
+      await createNotifications(students.map((student) => student.user), {
+        type: "grade_finalized",
+        title: "Grades are ready",
+        message: `Your ${assignment.subject} grade for ${assignment.class.name} (${assignment.class.section}) — ${period?.name || "this period"} is ready to view.`,
+        link: "/student/grades",
+      });
+    } catch (error) {
+      console.error("Failed to prepare student subject-grade notifications:", error.message);
+    }
+    return res.status(201).json({ message: "Subject gradebook finalized", finalizedAt: gradebook.finalizedAt });
+  } catch (error) {
+    console.error("Error finalizing subject gradebook:", error.message);
+    return res.status(500).json({ error: "Failed to finalize subject gradebook" });
+  }
+});
+
+router.post("/assignment/:assignmentId/period/:periodId/unlock", requireAuthenticatedUser, async (req, res) => {
+  try {
+    if (req.authenticatedUser.role !== "admin") {
+      return res.status(403).json({ error: "Administrator access is required" });
+    }
+    const { assignmentId, periodId } = req.params;
+    const assignment = await SubjectAssignment.findById(assignmentId)
+      .populate("class")
+      .populate("teacher", "user")
+      .lean();
+    if (!assignment) return res.status(404).json({ error: "Subject assignment not found" });
+    const deleted = await Gradebook.findOneAndDelete({ subjectAssignment: assignmentId, academicPeriod: periodId });
+    if (!deleted) return res.status(404).json({ error: "Subject gradebook is not finalized" });
+    try {
+      const period = await AcademicPeriod.findById(periodId).select("name").lean();
+      await createNotifications(assignment.teacher?.user ? [assignment.teacher.user] : [], {
+        type: "grade_unlocked",
+        title: `${assignment.subject} gradebook unlocked`,
+        message: `The ${assignment.subject} gradebook for ${assignment.class.name} (${assignment.class.section}) — ${period?.name || "this period"} was unlocked by an administrator.`,
+        link: `/teacher/scores?assignmentId=${assignmentId}&periodId=${periodId}`,
+      });
+    } catch (error) {
+      console.error("Failed to prepare subject unlock notification:", error.message);
+    }
+    return res.json({ message: "Subject gradebook unlocked", finalized: false });
+  } catch (error) {
+    console.error("Error unlocking subject gradebook:", error.message);
+    return res.status(500).json({ error: "Failed to unlock subject gradebook" });
+  }
+});
 
 // ---------------------------------------------------------------------------
 // GET /api/grades/class/:classId
@@ -436,60 +582,44 @@ router.get("/student/me", async (req, res) => {
       return res.json([]);
     }
 
-    // For each class, find finalized gradebooks
-    const results = await Promise.all(
-      classes.map(async (classRecord) => {
-        const gradebooks = await Gradebook.findOne({
-          class: classRecord._id,
-        })
-          .populate("academicPeriod")
-          .lean();
+    const assignments = await SubjectAssignment.find({
+      class: { $in: classes.map((classRecord) => classRecord._id) },
+      active: true,
+    })
+      .populate("class")
+      .populate("teacher", "name")
+      .lean();
 
-        if (!gradebooks) {
-          return {
-            class: classRecord,
-            periods: [],
-          };
-        }
-
-        // We'll gather all unique periods that have finalized gradebooks
-        const finalizedGradebooks = await Gradebook.find({
-          class: classRecord._id,
-        })
-          .populate("academicPeriod")
-          .lean();
-
-        const periods = await Promise.all(
-          finalizedGradebooks.map(async (gb) => {
-            const completeness = await isGradebookComplete(
-              String(classRecord._id),
-              String(gb.academicPeriod._id)
-            );
-
-            if (!completeness.complete) {
-              return null;
-            }
-
-            const [gradeSummary] = await calculateClassGrades(
-              String(classRecord._id),
-              String(student._id),
-              String(gb.academicPeriod._id)
-            );
-
-            return {
-              academicPeriod: gb.academicPeriod,
-              finalizedAt: gb.finalizedAt,
-              grade: gradeSummary || null,
-            };
-          })
+    const results = await Promise.all(assignments.map(async (assignment) => {
+      const gradebooks = await Gradebook.find({ subjectAssignment: assignment._id })
+        .populate("academicPeriod")
+        .lean();
+      const periods = await Promise.all(gradebooks.map(async (gradebook) => {
+        if (!gradebook.academicPeriod) return null;
+        const completeness = await isAssignmentGradebookComplete(
+          String(assignment._id),
+          String(gradebook.academicPeriod._id)
         );
-
+        if (!completeness.complete) return null;
+        const [gradeSummary] = await calculateAssignmentGrades(
+          String(assignment._id),
+          String(student._id),
+          String(gradebook.academicPeriod._id)
+        );
         return {
-          class: classRecord,
-          periods: periods.filter(Boolean),
+          academicPeriod: gradebook.academicPeriod,
+          finalizedAt: gradebook.finalizedAt,
+          grade: gradeSummary || null,
         };
-      })
-    );
+      }));
+      return {
+        class: assignment.class,
+        subjectAssignment: assignment,
+        subject: assignment.subject,
+        teacher: assignment.teacher,
+        periods: periods.filter(Boolean),
+      };
+    }));
 
     return res.json(results);
   } catch (error) {

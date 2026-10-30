@@ -166,19 +166,13 @@ router.post("/", async (req, res) => {
       gradingSystem,
     } = req.body;
 
-    if (
-      !name ||
-      !section ||
-      gradeLevel === undefined ||
-      !teacherId ||
-      !schoolYear
-    ) {
+    if (!name || !section || gradeLevel === undefined || !schoolYear) {
       return res.status(400).json({
-        error: "All class fields are required",
+        error: "Class name, section, grade level, and school year are required",
       });
     }
 
-    if (!/^[a-f\d]{24}$/i.test(String(teacherId))) {
+    if (teacherId && !/^[a-f\d]{24}$/i.test(String(teacherId))) {
       return res.status(400).json({
         error: "Invalid teacher",
       });
@@ -192,11 +186,11 @@ router.post("/", async (req, res) => {
       });
     }
 
-    const teacherProfile = await Teacher.findOne({
-      user: teacherId,
-    });
+    const teacherProfile = teacherId
+      ? await Teacher.findOne({ user: teacherId })
+      : null;
 
-    if (!teacherProfile) {
+    if (teacherId && !teacherProfile) {
       return res.status(404).json({
         error: "Teacher profile not found",
       });
@@ -206,7 +200,7 @@ router.post("/", async (req, res) => {
       name: name.trim(),
       section: section.trim(),
       gradeLevel: Number(gradeLevel),
-      teacher: teacherProfile._id,
+      teacher: teacherProfile?._id || null,
       schoolYear: schoolYear.trim(),
       students: [],
       gradingSystem: normalizedGradingSystem,

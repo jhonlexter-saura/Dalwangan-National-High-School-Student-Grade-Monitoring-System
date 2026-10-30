@@ -169,7 +169,7 @@ export default function StudentGrades() {
 
       {/* Classes with finalized grades */}
       {classesWithGrades.map((entry) => (
-        <ClassGradeCard key={entry.class._id} entry={entry} />
+        <ClassGradeCard key={entry.subjectAssignment?._id || `${entry.class._id}-${entry.subject}`} entry={entry} />
       ))}
 
       {gradeData.length > 0 && classesWithGrades.length === 0 && classesWithoutGrades.length === 0 && (
@@ -192,7 +192,7 @@ export default function StudentGrades() {
           <div className="divide-y">
             {classesWithoutGrades.map((entry) => (
               <div
-                key={entry.class._id}
+                key={entry.subjectAssignment?._id || `${entry.class._id}-${entry.subject}`}
                 className="flex items-center gap-4 px-5 py-4"
               >
                 <div className="rounded-lg bg-gray-100 p-2.5 text-gray-400">
@@ -200,13 +200,13 @@ export default function StudentGrades() {
                 </div>
                 <div>
                   <p className="font-medium text-gray-700">
-                    {entry.class.name} —{" "}
+                    {entry.subject || "Subject"} · {entry.class.name} —{" "}
                     <span className="text-gray-500">
                       Section {entry.class.section}
                     </span>
                   </p>
                   <p className="text-sm text-gray-400">
-                    Grade {entry.class.gradeLevel} · {entry.class.schoolYear}
+                    Teacher: {entry.teacher?.name || "Unassigned"} · Grade {entry.class.gradeLevel} · {entry.class.schoolYear}
                   </p>
                 </div>
                 <span className="ml-auto rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700">
@@ -225,7 +225,7 @@ export default function StudentGrades() {
 // ClassGradeCard — one card per class showing all finalized periods
 // ---------------------------------------------------------------------------
 function ClassGradeCard({ entry }) {
-  const { class: classRecord, periods } = entry;
+  const { class: classRecord, periods, subject, teacher } = entry;
   const [expanded, setExpanded] = useState(true);
 
   return (
@@ -242,11 +242,11 @@ function ClassGradeCard({ entry }) {
 
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-gray-800">
-            {classRecord.name}
+            {subject || "Subject"} · {classRecord.name}
           </p>
           <p className="text-sm text-gray-500">
             Section {classRecord.section} · Grade {classRecord.gradeLevel} ·{" "}
-            {classRecord.schoolYear}
+            {classRecord.schoolYear} · Teacher: {teacher?.name || "Unassigned"}
           </p>
         </div>
 

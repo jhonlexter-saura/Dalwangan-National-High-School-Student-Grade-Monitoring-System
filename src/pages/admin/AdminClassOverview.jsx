@@ -5,22 +5,49 @@ import {
   ClipboardList,
   Users,
   BookOpen,
-  CalendarDays,
   ChevronRight,
+  Plus,
+  MoreHorizontal,
+  Eye,
+  Trash2,
+  UserRoundPen,
 } from "lucide-react";
 
 import { useSchoolData } from "../../context/SchoolDataContext";
-import { getActivitiesByClass } from "../../services/schoolDataService";
+import {
+  createSubjectAssignment,
+  getActivitiesByClass,
+  getSubjectAssignmentsByClass,
+  getTeachers,
+  removeStudentFromClass,
+} from "../../services/schoolDataService";
+import { useToast } from "../../context/ToastContext";
+import StudentInviteManager from "../../components/classes/StudentInviteManager";
 
 function AdminClassOverview() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { showToast } = useToast();
 
-  const { classes, loading } = useSchoolData();
+  const { classes, loading, reloadData } = useSchoolData();
 
   const [activities, setActivities] = useState([]);
   const [loadingActivities, setLoadingActivities] = useState(true);
   const [error, setError] = useState("");
+  const [assignments, setAssignments] = useState([]);
+  const [teachers, setTeachers] = useState([]);
+  const [assignmentForm, setAssignmentForm] = useState({
+    subject: "",
+    teacherUserId: "",
+    writtenWork: "30",
+    performanceTask: "50",
+    assessment: "20",
+  });
+  const [savingAssignment, setSavingAssignment] = useState(false);
+  const [showAssignmentModal, setShowAssignmentModal] = useState(false);
+  const [assignmentsLoaded, setAssignmentsLoaded] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [openStudentMenuId, setOpenStudentMenuId] = useState(null);
 
   const selectedClass = useMemo(
     () =>
@@ -53,6 +80,60 @@ function AdminClassOverview() {
 
     loadActivities();
   }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    setAssignmentsLoaded(false);
+    setAssignments([]);
+    Promise.all([getSubjectAssignmentsByClass(id), getTeachers()])
+      .then(([assignmentData, teacherData]) => {
+        setAssignments(assignmentData || []);
+        setTeachers(teacherData || []);
+      })
+      .catch((loadError) => showToast(loadError.message || "Unable to load subject assignments.", "error"))
+      .finally(() => setAssignmentsLoaded(true));
+  }, [id, showToast]);
+
+  const handleCreateAssignment = async (event) => {
+    event.preventDefault();
+    const values = [
+      Number(assignmentForm.writtenWork),
+      Number(assignmentForm.performanceTask),
+      Number(assignmentForm.assessment),
+    ];
+    if (!assignmentForm.subject.trim() || !assignmentForm.teacherUserId) {
+      showToast("Enter a subject and select its teacher.", "warning");
+      return;
+    }
+    if (values.reduce((sum, value) => sum + value, 0) !== 100) {
+      showToast("The subject grading weights must total 100%.", "warning");
+      return;
+    }
+    try {
+      setSavingAssignment(true);
+      const created = await createSubjectAssignment({
+        classId: id,
+        subject: assignmentForm.subject.trim(),
+        teacherUserId: assignmentForm.teacherUserId,
+        gradingSystem: {
+          enabled: true,
+          components: [
+            { key: "written_work", name: "Written Work", percentage: values[0] },
+            { key: "performance_task", name: "Performance Tasks", percentage: values[1] },
+            { key: "assessment", name: "Assessment", percentage: values[2] },
+          ],
+        },
+      });
+      setAssignments((current) => [created, ...current]);
+      setAssignmentForm({ subject: "", teacherUserId: "", writtenWork: "30", performanceTask: "50", assessment: "20" });
+      setShowAssignmentModal(false);
+      showToast("Subject and teacher assigned to the class.", "success");
+    } catch (saveError) {
+      showToast(saveError.message || "Unable to create subject assignment.", "error");
+    } finally {
+      setSavingAssignment(false);
+    }
+  };
 
   if (!selectedClass) {
     if (loading) {
@@ -93,6 +174,18 @@ function AdminClassOverview() {
   }
 
   const students = selectedClass.students || [];
+  const needsSetup = assignmentsLoaded && !loadingActivities && (assignments.length === 0 || students.length === 0);
+
+  const handleRemoveStudent = async (student) => {
+    if (!window.confirm(`Remove ${student.name} from ${selectedClass.name}?`)) return;
+    try {
+      await removeStudentFromClass(student._id || student.id, id);
+      showToast(`${student.name} was removed from the class.`, "success");
+      await reloadData();
+    } catch (removeError) {
+      showToast(removeError.message || "Unable to remove student from class.", "error");
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -133,88 +226,138 @@ function AdminClassOverview() {
       ========================== */}
 
       <section className="overflow-hidden rounded-xl border bg-white shadow-sm">
-        <div className="border-b bg-blue-700 px-6 py-5 text-white">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm text-blue-100">
-                {selectedClass.schoolYear}
-              </p>
+        <div className="grid gap-4 bg-blue-700 p-5 text-white sm:grid-cols-3 sm:p-6">
+          <MetricItem icon={<Users size={20} />} label="Total Students" value={students.length} />
+          <MetricItem icon={<BookOpen size={20} />} label="Assigned Subjects" value={assignments.length} />
+          <MetricItem icon={<ClipboardList size={20} />} label="Total Activities" value={activities.length} />
+        </div>
+      </section>
 
-              <h2 className="mt-1 text-xl font-bold">
-                {selectedClass.name}
-              </h2>
+      {(!needsSetup || assignments.length > 0) && <section className="flex flex-col gap-3 rounded-xl border bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="font-semibold text-gray-900">Subject and teacher assignment</h2>
+          <p className="mt-1 text-sm text-gray-500">Assign a subject, teacher, and grading configuration to this class.</p>
+        </div>
+        <button type="button" onClick={() => setShowAssignmentModal(true)} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700">
+          <Plus size={17} /> Assign Subject and Teacher
+        </button>
+      </section>}
 
-              <p className="mt-1 text-sm text-blue-100">
-                {selectedClass.section
-                  ? `Section ${selectedClass.section}`
-                  : "No section specified"}
-              </p>
-            </div>
+      {assignments.length > 0 && <section className="overflow-hidden rounded-xl border bg-white shadow-sm">
+        <div className="border-b px-5 py-4">
+          <h2 className="font-semibold text-gray-900">Teachers and subjects</h2>
+          <p className="mt-1 text-sm text-gray-500">Manage activities and scores for each subject separately.</p>
+        </div>
+        {assignments.length ? (
+          <div className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-3">
+            {assignments.map((assignment) => (
+              <article key={assignment._id} className="flex min-h-40 flex-col rounded-xl border border-gray-200 p-4">
+                <div className="flex-1">
+                  <p className="font-semibold text-gray-900">{assignment.subject}</p>
+                  <p className="mt-1 text-sm text-gray-600">{assignment.teacher?.name || "No teacher assigned"}</p>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {(assignment.gradingSystem?.components || []).map((component) => (
+                      <span key={component.key} className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-800">
+                        {component.key === "written_work" ? "Written" : component.key === "performance_task" ? "Performance" : "Assessment"} {component.percentage}%
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="mt-4 flex gap-4 border-t pt-3 text-sm font-medium text-blue-600">
+                  <Link to={`/admin/activities?assignmentId=${assignment._id}`}>Activities</Link>
+                  <Link to={`/admin/scores?assignmentId=${assignment._id}`}>Scores</Link>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : null}
+      </section>}
 
-            <div className="rounded-lg bg-white/10 p-3">
-              <Users size={28} />
-            </div>
+      {needsSetup && <section className="rounded-xl border border-blue-100 bg-white p-6 shadow-sm sm:p-8">
+        <p className="text-xs font-semibold uppercase tracking-wider text-blue-600">Getting started</p>
+        <h2 className="mt-1 text-xl font-bold text-gray-900">Set up this class</h2>
+        <p className="mt-1 text-sm text-gray-500">Complete these steps to prepare the class for teaching.</p>
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
+          <div className="rounded-xl border p-5">
+            <span className={`text-xs font-semibold uppercase ${assignments.length ? "text-green-700" : "text-blue-600"}`}>Step 1 {assignments.length ? "· Complete" : "· Next"}</span>
+            <h3 className="mt-2 font-semibold text-gray-900">Assign a subject and teacher</h3>
+            <p className="mt-1 text-sm text-gray-500">Set the subject grading configuration for this class.</p>
+            <button type="button" onClick={() => setShowAssignmentModal(true)} className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Assign Subject &amp; Teacher</button>
+          </div>
+          <div className="rounded-xl border p-5">
+            <span className={`text-xs font-semibold uppercase ${students.length ? "text-green-700" : "text-blue-600"}`}>Step 2 {students.length ? "· Complete" : "· Next"}</span>
+            <h3 className="mt-2 font-semibold text-gray-900">Enroll students</h3>
+            <p className="mt-1 text-sm text-gray-500">Invite students to join this class.</p>
+            <button type="button" onClick={() => setShowInviteModal(true)} className="mt-4 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Enroll Students</button>
           </div>
         </div>
+      </section>}
 
-        <div className="grid divide-y sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-          <SummaryItem
-            icon={<Users size={19} />}
-            label="Students"
-            value={students.length}
-          />
-
-          <SummaryItem
-            icon={<ClipboardList size={19} />}
-            label="Activities"
-            value={activities.length}
-          />
-
-          <SummaryItem
-            icon={<CalendarDays size={19} />}
-            label="School Year"
-            value={selectedClass.schoolYear || "—"}
-          />
+      {showAssignmentModal && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingAssignment) setShowAssignmentModal(false); }}>
+        <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white shadow-xl">
+          <div className="flex items-center justify-between border-b px-5 py-4">
+            <div><h2 className="font-semibold text-gray-900">Assign subject and teacher</h2><p className="text-sm text-gray-500">{selectedClass.name} · Section {selectedClass.section}</p></div>
+            <button type="button" onClick={() => setShowAssignmentModal(false)} className="rounded-md px-3 py-1 text-sm text-gray-500 hover:bg-gray-100">Close</button>
+          </div>
+          <form onSubmit={handleCreateAssignment} className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-3">
+          <label className="text-sm font-medium text-gray-700">
+            Subject
+            <input
+              value={assignmentForm.subject}
+              onChange={(event) => setAssignmentForm((form) => ({ ...form, subject: event.target.value }))}
+              placeholder="e.g. Mathematics"
+              className="mt-1 w-full rounded-lg border bg-white px-3 py-2.5 font-normal"
+              required
+            />
+          </label>
+          <label className="text-sm font-medium text-gray-700">
+            Teacher
+            <select
+              value={assignmentForm.teacherUserId}
+              onChange={(event) => setAssignmentForm((form) => ({ ...form, teacherUserId: event.target.value }))}
+              className="mt-1 w-full rounded-lg border bg-white px-3 py-2.5 font-normal"
+              required
+            >
+              <option value="">Select teacher</option>
+              {teachers.map((teacher) => <option key={teacher._id} value={teacher._id}>{teacher.name}</option>)}
+            </select>
+          </label>
+          <div className="sm:col-span-2 lg:col-span-3">
+            <p className="mb-2 text-sm font-medium text-gray-700">Subject grading weights</p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {[
+                ["writtenWork", "Written Work"],
+                ["performanceTask", "Performance Tasks"],
+                ["assessment", "Assessment"],
+              ].map(([key, label]) => (
+                <label key={key} className="text-xs text-gray-500">
+                  {label} (%)
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={assignmentForm[key]}
+                    onChange={(event) => setAssignmentForm((form) => ({ ...form, [key]: event.target.value }))}
+                    className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm text-gray-800"
+                  />
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="sm:col-span-2 lg:col-span-3">
+            <button type="submit" disabled={savingAssignment} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+              <Plus size={17} /> {savingAssignment ? "Assigning…" : "Assign Subject and Teacher"}
+            </button>
+          </div>
+          </form>
         </div>
-      </section>
-
-      {/* =========================
-          QUICK ACTIONS
-      ========================== */}
-
-      <section>
-        <div className="mb-3">
-          <p className="text-xs font-semibold uppercase tracking-wider text-yellow-600">
-            Quick Actions
-          </p>
-
-          <h2 className="mt-1 text-lg font-bold text-blue-700">
-            Manage this class
-          </h2>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <QuickAction
-            to={`/admin/activities?classId=${selectedClass.id}`}
-            icon={<ClipboardList size={21} />}
-            title="Activities"
-            description="Create and manage activities for this class."
-          />
-
-          <QuickAction
-            to={`/admin/scores?classId=${selectedClass.id}`}
-            icon={<BookOpen size={21} />}
-            title="Scores"
-            description="Review and manage student scores."
-          />
-        </div>
-      </section>
+      </div>}
 
       {/* =========================
           RECENT ACTIVITIES
       ========================== */}
 
-      <section className="overflow-hidden rounded-xl border bg-white shadow-sm">
+      {(activities.length > 0 || !needsSetup) && <section className="overflow-hidden rounded-xl border bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-yellow-700">
@@ -248,7 +391,7 @@ function AdminClassOverview() {
             {activities.slice(0, 5).map((activity) => (
               <Link
                 key={activity._id}
-                to={`/admin/scores?classId=${selectedClass.id}&activityId=${activity._id}`}
+                to={`/admin/scores?assignmentId=${activity.subjectAssignment?._id || activity.subjectAssignment || ""}&activityId=${activity._id}`}
                 className="flex items-center gap-4 px-5 py-4 transition hover:bg-gray-50"
               >
                 <div className="rounded-lg bg-blue-50 p-2.5 text-blue-600">
@@ -260,12 +403,12 @@ function AdminClassOverview() {
                     {activity.title}
                   </p>
 
-                  <p className="mt-1 text-xs text-gray-500">
-                    {activity.type || "Activity"}
-                    {activity.totalPoints
-                      ? ` · ${activity.totalPoints} points`
-                      : ""}
-                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">{activity.subjectAssignment?.subject || "Subject"}</span>
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">Due {activity.date ? new Date(activity.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}</span>
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{activity.totalPoints || 0} pts</span>
+                    <span className={`rounded-full px-2 py-0.5 text-xs ${activity.status === "locked" ? "bg-amber-50 text-amber-700" : "bg-green-50 text-green-700"}`}>{activity.status === "locked" ? "Locked" : "Active"}</span>
+                  </div>
                 </div>
 
                 <ChevronRight
@@ -298,9 +441,9 @@ function AdminClassOverview() {
             </Link>
           </div>
         )}
-      </section>
+      </section>}
 
-      <section className="overflow-hidden rounded-xl border bg-white shadow-sm">
+      {(students.length > 0 || !needsSetup) && <section className="overflow-hidden rounded-xl border bg-white shadow-sm">
         <div className="flex items-center gap-3 border-b px-5 py-4">
           <Users size={20} className="text-blue-600" />
           <div>
@@ -310,95 +453,43 @@ function AdminClassOverview() {
           </div>
         </div>
 
-        {students.length > 0 ? (
-          <div className="divide-y">
-            {students.map((student, index) => (
-              <div
-                key={student._id || student.id || index}
-                className="flex flex-col gap-1 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div>
-                  <p className="text-sm font-semibold text-gray-800">
-                    {student.name}
-                  </p>
-                  {student.studentId && (
-                    <p className="mt-1 text-xs text-gray-500">
-                      {student.studentId}
-                    </p>
-                  )}
-                </div>
-
-                {student.email && (
-                  <p className="text-sm text-gray-500">
-                    {student.email}
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="px-5 py-10 text-center text-sm text-gray-500">
-            No students in this class yet.
-          </div>
-        )}
-      </section>
-    </div>
-  );
-}
-
-function SummaryItem({ icon, label, value }) {
-  return (
-    <div className="flex items-center gap-3 px-5 py-4">
-      <div className="rounded-lg bg-blue-50 p-2 text-blue-600">
-        {icon}
-      </div>
-
-      <div className="min-w-0">
-        <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
-          {label}
-        </p>
-
-        <p className="mt-1 truncate text-sm font-semibold text-gray-800">
-          {value}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function QuickAction({
-  to,
-  icon,
-  title,
-  description,
-}) {
-  return (
-    <Link
-      to={to}
-      className="group flex items-start gap-4 rounded-xl border bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md"
-    >
-      <div className="rounded-lg bg-blue-50 p-3 text-blue-600 transition group-hover:bg-blue-100">
-        {icon}
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="font-semibold text-gray-800 group-hover:text-blue-600">
-            {title}
-          </h3>
-
-          <ChevronRight
-            size={17}
-            className="shrink-0 text-gray-300 transition group-hover:translate-x-0.5 group-hover:text-blue-500"
-          />
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[680px] text-left">
+            <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500"><tr><th className="px-5 py-3">Name</th><th className="px-5 py-3">Student ID</th><th className="px-5 py-3">Email</th><th className="px-5 py-3 text-right">Actions</th></tr></thead>
+            <tbody className="divide-y">
+              {students.map((student, index) => {
+                const studentId = student._id || student.id;
+                return <tr key={studentId || index}>
+                  <td className="px-5 py-4 text-sm font-medium text-gray-800">{student.name}</td>
+                  <td className="px-5 py-4 text-sm text-gray-600">{student.studentId || "—"}</td>
+                  <td className="px-5 py-4 text-sm text-gray-600">{student.email || "—"}</td>
+                  <td className="relative px-5 py-4 text-right">
+                    <button type="button" aria-label={`Actions for ${student.name}`} onClick={() => setOpenStudentMenuId(openStudentMenuId === studentId ? null : studentId)} className="rounded-md p-2 text-gray-500 hover:bg-gray-100"><MoreHorizontal size={18} /></button>
+                    {openStudentMenuId === studentId && <div className="absolute right-5 top-12 z-20 w-48 rounded-lg border bg-white py-1 text-left shadow-lg">
+                      <Link to={`/admin/accounts/student/${studentId}/edit`} onClick={() => setOpenStudentMenuId(null)} className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"><UserRoundPen size={15} /> Edit student</Link>
+                      <Link to={`/admin/scores?classId=${id}&studentId=${studentId}&tab=gradebook`} onClick={() => setOpenStudentMenuId(null)} className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"><Eye size={15} /> View progress</Link>
+                      <button type="button" onClick={() => { setOpenStudentMenuId(null); handleRemoveStudent(student); }} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"><Trash2 size={15} /> Remove from class</button>
+                    </div>}
+                  </td>
+                </tr>;
+              })}
+              {students.length === 0 && <tr><td colSpan="4" className="px-5 py-10 text-center text-sm text-gray-500">No students in this class yet.</td></tr>}
+            </tbody>
+          </table>
         </div>
-
-        <p className="mt-1 text-sm leading-5 text-gray-500">
-          {description}
-        </p>
-      </div>
-    </Link>
+      </section>}
+      {showInviteModal && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowInviteModal(false); }}>
+        <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl bg-white shadow-xl">
+          <div className="flex items-center justify-between border-b px-6 py-4"><div><h2 className="text-lg font-semibold text-gray-900">Enroll Students</h2><p className="text-sm text-gray-500">{selectedClass.name} · Section {selectedClass.section}</p></div><button type="button" onClick={() => setShowInviteModal(false)} className="rounded-md px-3 py-2 text-sm text-gray-500 hover:bg-gray-100">Close</button></div>
+          <div className="p-6"><StudentInviteManager classData={selectedClass} isTeacher={false} onClose={() => setShowInviteModal(false)} onSuccess={async () => { await reloadData(); setShowInviteModal(false); }} /></div>
+        </div>
+      </div>}
+    </div>
   );
+}
+
+function MetricItem({ icon, label, value }) {
+  return <div className="flex items-center gap-3 rounded-lg bg-white/10 p-4"><div className="rounded-lg bg-white/15 p-2 text-white">{icon}</div><div><p className="text-xs font-medium uppercase tracking-wide text-blue-100">{label}</p><p className="mt-1 text-2xl font-bold text-white">{value}</p></div></div>;
 }
 
 export default AdminClassOverview;

@@ -3,6 +3,9 @@ const express = require("express");
 const Activity = require("../models/Activity");
 const Class = require("../models/Class");
 const AcademicPeriod = require("../models/AcademicPeriod");
+const SubjectAssignment = require("../models/SubjectAssignment");
+const Teacher = require("../models/Teacher");
+const { requireAuthenticatedUser } = require("../middleware/authorization");
 
 const router = express.Router();
 
@@ -30,6 +33,7 @@ router.get("/class/:classId", async (req, res) => {
     const activities = await Activity.find({
       class: req.params.classId,
     })
+      .populate("subjectAssignment")
       .populate("academicPeriod")
       .sort({ date: -1 });
 
@@ -43,6 +47,28 @@ router.get("/class/:classId", async (req, res) => {
     res.status(500).json({
       error: "Failed to fetch class activities",
     });
+  }
+});
+
+router.get("/assignment/:assignmentId", requireAuthenticatedUser, async (req, res) => {
+  try {
+    const assignment = await SubjectAssignment.findById(req.params.assignmentId).select("teacher").lean();
+    if (!assignment) return res.status(404).json({ error: "Subject assignment not found" });
+    if (req.authenticatedUser.role !== "admin") {
+      const teacher = await Teacher.findOne({ user: req.authenticatedUser._id }).select("_id").lean();
+      if (req.authenticatedUser.role !== "teacher" || !teacher || String(assignment.teacher) !== String(teacher._id)) {
+        return res.status(403).json({ error: "You can only view activities for your subject assignments" });
+      }
+    }
+    const activities = await Activity.find({ subjectAssignment: req.params.assignmentId })
+      .populate("class")
+      .populate("subjectAssignment")
+      .populate("academicPeriod")
+      .sort({ date: -1 });
+    return res.json(activities);
+  } catch (error) {
+    console.error("Error fetching assignment activities:", error.message);
+    return res.status(500).json({ error: "Failed to fetch assignment activities" });
   }
 });
 
@@ -100,12 +126,13 @@ router.get("/:id", async (req, res) => {
 
 
  // CREATE activity
-router.post("/", async (req, res) => {
+router.post("/", requireAuthenticatedUser, async (req, res) => {
   try {
     const {
       title,
       description,
       classId,
+      subjectAssignmentId,
       academicPeriodId,
       type,
       gradingCategory,
@@ -135,6 +162,7 @@ router.post("/", async (req, res) => {
     if (
       !title?.trim() ||
       !classId ||
+      !subjectAssignmentId ||
       !academicPeriodId ||
       !type ||
       totalPoints === undefined ||
@@ -144,7 +172,7 @@ router.post("/", async (req, res) => {
     ) {
       return res.status(400).json({
         error:
-          "Title, class, academic period, type, total points, and date are required",
+          "Title, class, subject, academic period, type, total points, and date are required",
       });
     }
 
@@ -164,6 +192,21 @@ router.post("/", async (req, res) => {
       return res.status(404).json({
         error: "Class not found",
       });
+    }
+
+    const subjectAssignment = await SubjectAssignment.findOne({
+      _id: subjectAssignmentId,
+      class: classId,
+      active: true,
+    });
+    if (!subjectAssignment) {
+      return res.status(400).json({ error: "Subject assignment does not belong to this class" });
+    }
+    if (req.authenticatedUser.role !== "admin") {
+      const teacher = await Teacher.findOne({ user: req.authenticatedUser._id }).select("_id").lean();
+      if (req.authenticatedUser.role !== "teacher" || !teacher || String(subjectAssignment.teacher) !== String(teacher._id)) {
+        return res.status(403).json({ error: "You can only create activities for your subject assignments" });
+      }
     }
 
     // Verify academic period
@@ -192,6 +235,7 @@ router.post("/", async (req, res) => {
       title: title.trim(),
       description: description?.trim() || "",
       class: classId,
+      subjectAssignment: subjectAssignmentId,
       academicPeriod: academicPeriodId,
       type,
       gradingCategory: resolvedGradingCategory,
@@ -202,6 +246,7 @@ router.post("/", async (req, res) => {
     // Return populated activity
     const populatedActivity = await Activity.findById(activity._id)
       .populate("class")
+      .populate("subjectAssignment")
       .populate("academicPeriod");
 
     return res.status(201).json(populatedActivity);

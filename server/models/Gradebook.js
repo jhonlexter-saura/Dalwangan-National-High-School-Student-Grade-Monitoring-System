@@ -8,6 +8,13 @@ const gradebookSchema = new mongoose.Schema(
       required: true,
     },
 
+    subjectAssignment: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "SubjectAssignment",
+      default: null,
+      index: true,
+    },
+
     academicPeriod: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "AcademicPeriod",
@@ -34,10 +41,13 @@ const gradebookSchema = new mongoose.Schema(
   }
 );
 
-// One finalized record per class + period
+// One finalized record per subject assignment + period
 gradebookSchema.index(
-  { class: 1, academicPeriod: 1 },
-  { unique: true }
+  { subjectAssignment: 1, academicPeriod: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { subjectAssignment: { $type: "objectId" } },
+  }
 );
 
 module.exports = mongoose.model("Gradebook", gradebookSchema);
