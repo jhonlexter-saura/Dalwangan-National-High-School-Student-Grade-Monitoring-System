@@ -441,3 +441,53 @@ export function markAllNotificationsRead() {
 export function getMyGrades() {
   return request("/grades/student/me");
 }
+
+// -----------------------------
+// Audit Logs (Admin only)
+// -----------------------------
+
+export function getAuditLogs(params = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== "" && value !== null) {
+      query.set(key, String(value));
+    }
+  });
+  const qs = query.toString();
+  return request(`/audit-logs${qs ? `?${qs}` : ""}`);
+}
+
+export function getAuditLogDetail(id) {
+  return request(`/audit-logs/${id}`);
+}
+
+export async function exportAuditLogs(params = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== "" && value !== null) {
+      query.set(key, String(value));
+    }
+  });
+  const token = localStorage.getItem("dnhs_token");
+  const response = await fetch(`${API_URL}/audit-logs/export?${query.toString()}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || "Unable to export audit records.");
+  }
+  return response.blob();
+}
+
+export function getAuditLogsExportUrl(params = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== "" && value !== null) {
+      query.set(key, String(value));
+    }
+  });
+  const token = localStorage.getItem("dnhs_token");
+  if (token) query.set("_token", token);
+  const qs = query.toString();
+  return `http://localhost:5000/api/audit-logs/export${qs ? `?${qs}` : ""}`;
+}

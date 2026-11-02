@@ -1,6 +1,7 @@
 const express = require("express");
 const Class = require("../models/Class");
-const Teacher = require("../models/Teacher")
+const Teacher = require("../models/Teacher");
+const { logAudit } = require("../services/auditLogger");
 
 const router = express.Router();
 
@@ -124,6 +125,25 @@ router.post("/teacher/:userId", async (req, res) => {
       .populate("teacher")
       .populate("students");
 
+    logAudit({
+      req,
+      action: "CLASS_CREATED",
+      category: "classes",
+      target: {
+        entityType: "Class",
+        entityId: String(newClass._id),
+        name: `${newClass.name} · Section ${newClass.section}`,
+      },
+      description: `Created class '${newClass.name}' (Section: ${newClass.section}, Grade ${newClass.gradeLevel}, S.Y.: ${newClass.schoolYear})`,
+      details: {
+        name: newClass.name,
+        section: newClass.section,
+        gradeLevel: newClass.gradeLevel,
+        schoolYear: newClass.schoolYear,
+        adviser: teacher.name,
+      },
+    });
+
     res.status(201).json(populatedClass);
   } catch (error) {
     console.error("Create teacher class error:", error);
@@ -210,6 +230,25 @@ router.post("/", async (req, res) => {
       .populate("teacher")
       .populate("students");
 
+    logAudit({
+      req,
+      action: "CLASS_CREATED",
+      category: "classes",
+      target: {
+        entityType: "Class",
+        entityId: String(newClass._id),
+        name: `${newClass.name} · Section ${newClass.section}`,
+      },
+      description: `Created class '${newClass.name}' (Section: ${newClass.section}, Grade ${newClass.gradeLevel}, S.Y.: ${newClass.schoolYear})`,
+      details: {
+        name: newClass.name,
+        section: newClass.section,
+        gradeLevel: newClass.gradeLevel,
+        schoolYear: newClass.schoolYear,
+        adviser: teacherProfile?.name || "Unassigned",
+      },
+    });
+
     res.status(201).json(populatedClass);
   } catch (error) {
     console.error("Error creating class:", error.message);
@@ -241,6 +280,19 @@ router.put("/:id", async (req, res) => {
       return res.status(404).json({ error: "Class not found" });
     }
 
+    logAudit({
+      req,
+      action: "CLASS_UPDATED",
+      category: "classes",
+      target: {
+        entityType: "Class",
+        entityId: String(updated._id),
+        name: `${updated.name} · Section ${updated.section}`,
+      },
+      description: `Updated class details for '${updated.name}' (Section: ${updated.section})`,
+      details: updateData,
+    });
+
     res.json(updated);
   } catch (error) {
     console.error("Error updating class:", error.message);
@@ -257,6 +309,24 @@ router.delete("/:id", async (req, res) => {
     }
 
     await Class.findByIdAndDelete(req.params.id);
+
+    logAudit({
+      req,
+      action: "CLASS_DELETED",
+      category: "classes",
+      target: {
+        entityType: "Class",
+        entityId: String(classData._id),
+        name: `${classData.name} · Section ${classData.section}`,
+      },
+      description: `Deleted class '${classData.name}' (Section: ${classData.section}, Grade ${classData.gradeLevel})`,
+      details: {
+        name: classData.name,
+        section: classData.section,
+        gradeLevel: classData.gradeLevel,
+      },
+    });
+
     res.json({ message: "Class deleted successfully" });
   } catch (error) {
     console.error("Error deleting class:", error.message);

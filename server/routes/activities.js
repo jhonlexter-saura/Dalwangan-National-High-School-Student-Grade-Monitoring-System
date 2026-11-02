@@ -6,6 +6,7 @@ const AcademicPeriod = require("../models/AcademicPeriod");
 const SubjectAssignment = require("../models/SubjectAssignment");
 const Teacher = require("../models/Teacher");
 const { requireAuthenticatedUser } = require("../middleware/authorization");
+const { logAudit } = require("../services/auditLogger");
 
 const router = express.Router();
 
@@ -248,6 +249,29 @@ router.post("/", requireAuthenticatedUser, async (req, res) => {
       .populate("class")
       .populate("subjectAssignment")
       .populate("academicPeriod");
+
+    logAudit({
+      req,
+      action: "ACTIVITY_CREATED",
+      category: "activities",
+      target: {
+        entityType: "Activity",
+        entityId: String(activity._id),
+        name: activity.title,
+      },
+      description: `Created activity '${activity.title}' (${activity.type}, ${points} pts) for ${classData.name} - ${subjectAssignment.subject}`,
+      details: {
+        title: activity.title,
+        type: activity.type,
+        category: resolvedGradingCategory,
+        totalPoints: points,
+        classId: classData._id,
+        className: classData.name,
+        subject: subjectAssignment.subject,
+        periodName: academicPeriod.name,
+        date: activity.date,
+      },
+    });
 
     return res.status(201).json(populatedActivity);
   } catch (error) {

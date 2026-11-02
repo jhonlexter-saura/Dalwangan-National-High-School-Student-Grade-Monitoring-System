@@ -16,6 +16,7 @@ const gradeRoutes = require("./routes/grades");
 const notificationRoutes = require("./routes/notifications");
 const subjectAssignmentRoutes = require("./routes/subjectAssignments");
 const integrationRoutes = require("./routes/integrations");
+const auditLogRoutes = require("./routes/auditLogs");
 
 dotenv.config();
 
@@ -40,7 +41,8 @@ app.use("/api/academic-periods", academicPeriodRoutes);
 app.use("/api/grades", gradeRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/subject-assignments", subjectAssignmentRoutes);
-app.use("/api/users", userRoutes),
+app.use("/api/users", userRoutes);
+app.use("/api/audit-logs", auditLogRoutes);
 
 app.get("/", (req, res) => {
   res.json({

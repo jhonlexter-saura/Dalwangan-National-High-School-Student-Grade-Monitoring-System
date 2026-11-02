@@ -1,6 +1,7 @@
 const express = require("express");
 const IntegrationSetting = require("../models/IntegrationSetting");
 const { requireAdmin } = require("../middleware/authorization");
+const { logAudit } = require("../services/auditLogger");
 
 const router = express.Router();
 
@@ -82,6 +83,7 @@ router.patch("/", async (req, res) => {
       });
     }
 
+    const previous = await readSettings();
     await IntegrationSetting.findOneAndUpdate(
       { key: "global" },
       {
@@ -100,6 +102,15 @@ router.patch("/", async (req, res) => {
         setDefaultsOnInsert: true,
       }
     );
+
+    logAudit({
+      req,
+      action: "INTEGRATION_SETTING_CHANGED",
+      category: "system",
+      target: { entityType: "IntegrationSetting", entityId: "global", name: key },
+      description: `${key} ${value ? "enabled" : "disabled"}`,
+      details: { setting: key, before: previous[key], after: value },
+    });
 
     return res.json({
       success: true,

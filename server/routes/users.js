@@ -11,6 +11,7 @@ const {
   getTokenUserId,
   isAuthenticationConfigured,
 } = require("../middleware/authorization");
+const { logAudit } = require("../services/auditLogger");
 
 const router = express.Router();
 
@@ -213,6 +214,19 @@ router.post("/", requireAdmin, async (req, res) => {
       });
     }
 
+    logAudit({
+      req,
+      action: "ACCOUNT_CREATED",
+      category: "accounts",
+      target: {
+        entityType: "User",
+        entityId: String(createdUser._id),
+        name: createdUser.name,
+      },
+      description: `Created ${createdUser.role} account for '${createdUser.name}' (${createdUser.email})`,
+      details: { name: createdUser.name, email: createdUser.email, role: createdUser.role },
+    });
+
     return res.status(201).json({
       _id: createdUser._id,
       name: createdUser.name,
@@ -395,6 +409,19 @@ router.patch("/me", requireAuth, async (req, res) => {
       );
     }
 
+    logAudit({
+      req,
+      action: "ACCOUNT_UPDATED",
+      category: "accounts",
+      target: {
+        entityType: "User",
+        entityId: String(user._id),
+        name: user.name,
+      },
+      description: `Updated profile for '${user.name}' (${user.role}, ${user.email})`,
+      details: { name: user.name, email: user.email, role: user.role },
+    });
+
     return res.json(sendSafeProfile(user));
   } catch (error) {
     console.error("Self profile update error:", error);
@@ -469,6 +496,19 @@ router.patch("/:id/status", requireAdmin, async (req, res) => {
       { user: user._id },
       { $set: { status } }
     );
+
+    logAudit({
+      req,
+      action: "ACCOUNT_STATUS_CHANGED",
+      category: "accounts",
+      target: {
+        entityType: "User",
+        entityId: String(user._id),
+        name: user.name,
+      },
+      description: `Updated account status for '${user.name}' (${user.role}) to '${status}'`,
+      details: { name: user.name, email: user.email, role: user.role, newStatus: status },
+    });
 
     return res.json({
       _id: user._id,
@@ -585,6 +625,19 @@ router.patch("/:id", requireAdmin, async (req, res) => {
         }
       );
     }
+
+    logAudit({
+      req,
+      action: "ACCOUNT_UPDATED",
+      category: "accounts",
+      target: {
+        entityType: "User",
+        entityId: String(user._id),
+        name: user.name,
+      },
+      description: `Updated profile for '${user.name}' (${user.role}, ${user.email})`,
+      details: { name: user.name, email: user.email, role: user.role },
+    });
 
     return res.json(sendSafeProfile(user));
   } catch (error) {

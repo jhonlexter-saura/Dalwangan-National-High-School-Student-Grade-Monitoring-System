@@ -5,6 +5,7 @@ const SubjectAssignment = require("../models/SubjectAssignment");
 const Class = require("../models/Class");
 const Teacher = require("../models/Teacher");
 const { requireAdmin, requireAuthenticatedUser } = require("../middleware/authorization");
+const { logAudit } = require("../services/auditLogger");
 
 const router = express.Router();
 
@@ -88,6 +89,20 @@ router.post("/", requireAdmin, async (req, res) => {
       gradingSystem: normalizedGradingSystem,
     });
     const populated = await populateAssignment(SubjectAssignment.findById(assignment._id));
+
+    logAudit({
+      req,
+      action: "SUBJECT_ASSIGNED",
+      category: "classes",
+      target: {
+        entityType: "SubjectAssignment",
+        entityId: String(assignment._id),
+        name: `${classRecord.name} · ${subject.trim()}`,
+      },
+      description: `Assigned subject '${subject.trim()}' to class '${classRecord.name}' for teacher '${teacher.name}'`,
+      details: { classId: classRecord._id, className: classRecord.name, subject: subject.trim(), teacherName: teacher.name },
+    });
+
     return res.status(201).json(populated);
   } catch (error) {
     if (error.code === 11000) {
@@ -124,6 +139,20 @@ router.patch("/:id", requireAdmin, async (req, res) => {
     if (active !== undefined) assignment.active = Boolean(active);
     await assignment.save();
     const populated = await populateAssignment(SubjectAssignment.findById(assignment._id));
+
+    logAudit({
+      req,
+      action: "SUBJECT_ASSIGNMENT_UPDATED",
+      category: "classes",
+      target: {
+        entityType: "SubjectAssignment",
+        entityId: String(assignment._id),
+        name: `${assignment.subject}`,
+      },
+      description: `Updated subject assignment '${assignment.subject}'`,
+      details: { assignmentId: assignment._id, subject: assignment.subject, active: assignment.active },
+    });
+
     return res.json(populated);
   } catch (error) {
     if (error.code === 11000) {
@@ -144,6 +173,20 @@ router.delete("/:id", requireAdmin, async (req, res) => {
       return res.status(404).json({ error: "Subject assignment not found" });
     }
     await SubjectAssignment.findByIdAndDelete(req.params.id);
+
+    logAudit({
+      req,
+      action: "SUBJECT_ASSIGNMENT_DELETED",
+      category: "classes",
+      target: {
+        entityType: "SubjectAssignment",
+        entityId: String(assignment._id),
+        name: assignment.subject,
+      },
+      description: `Removed subject assignment '${assignment.subject}'`,
+      details: { assignmentId: assignment._id, subject: assignment.subject },
+    });
+
     return res.json({ message: "Subject assignment removed successfully" });
   } catch (error) {
     console.error("Failed to delete subject assignment:", error.message);

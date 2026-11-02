@@ -4,6 +4,7 @@ const mongoose = require("mongoose");
 const AcademicPeriod = require("../models/AcademicPeriod");
 const Activity = require("../models/Activity");
 const { requireAdmin } = require("../middleware/authorization");
+const { logAudit } = require("../services/auditLogger");
 
 const router = express.Router();
 
@@ -88,6 +89,19 @@ router.post("/", requireAdmin, async (req, res) => {
 
     const period = await AcademicPeriod.create(periodData);
 
+    logAudit({
+      req,
+      action: "CALENDAR_PERIOD_CREATED",
+      category: "calendar",
+      target: {
+        entityType: "AcademicPeriod",
+        entityId: String(period._id),
+        name: `${period.name} (${period.schoolYear})`,
+      },
+      description: `Created academic period '${period.name}' for S.Y. ${period.schoolYear} (${period.startDate?.toISOString().slice(0, 10)} – ${period.endDate?.toISOString().slice(0, 10)})`,
+      details: { name: period.name, schoolYear: period.schoolYear, trimester: period.trimester, status: period.status, startDate: period.startDate, endDate: period.endDate },
+    });
+
     res.status(201).json(period);
   } catch (error) {
     console.error("Create academic period error:", error);
@@ -147,6 +161,20 @@ router.patch("/:id", requireAdmin, async (req, res) => {
 
     Object.assign(period, periodData);
     await period.save();
+
+    logAudit({
+      req,
+      action: "CALENDAR_PERIOD_UPDATED",
+      category: "calendar",
+      target: {
+        entityType: "AcademicPeriod",
+        entityId: String(period._id),
+        name: `${period.name} (${period.schoolYear})`,
+      },
+      description: `Updated academic period '${period.name}' for S.Y. ${period.schoolYear}`,
+      details: { name: period.name, schoolYear: period.schoolYear, status: period.status, startDate: period.startDate, endDate: period.endDate },
+    });
+
     return res.json(period);
   } catch (error) {
     console.error("Update academic period error:", error);
@@ -179,6 +207,20 @@ router.delete("/:id", requireAdmin, async (req, res) => {
     }
 
     await period.deleteOne();
+
+    logAudit({
+      req,
+      action: "CALENDAR_PERIOD_DELETED",
+      category: "calendar",
+      target: {
+        entityType: "AcademicPeriod",
+        entityId: String(period._id),
+        name: `${period.name} (${period.schoolYear})`,
+      },
+      description: `Deleted academic period '${period.name}' for S.Y. ${period.schoolYear}`,
+      details: { name: period.name, schoolYear: period.schoolYear, trimester: period.trimester },
+    });
+
     return res.json({ success: true });
   } catch (error) {
     console.error("Delete academic period error:", error);

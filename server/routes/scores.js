@@ -6,6 +6,7 @@ const Activity = require("../models/Activity");
 const SubjectAssignment = require("../models/SubjectAssignment");
 const Teacher = require("../models/Teacher");
 const { requireAuthenticatedUser } = require("../middleware/authorization");
+const { logAudit } = require("../services/auditLogger");
 
 const router = express.Router();
 
@@ -148,6 +149,11 @@ router.post("/", requireAuthenticatedUser, async (req, res) => {
       });
     }
 
+    const existingScore = await Score.findOne({
+      student: studentId,
+      activity: activityId,
+    }).lean();
+
     const savedScore = await Score.findOneAndUpdate(
       {
         student: studentId,
@@ -171,6 +177,37 @@ router.post("/", requireAuthenticatedUser, async (req, res) => {
       .populate("class")
       .populate("subjectAssignment")
       .populate("activity");
+
+    const previousScore = existingScore ? existingScore.score : null;
+    const isUpdate = existingScore !== null;
+    const scoreDiff = isUpdate
+      ? `from ${previousScore} to ${score}`
+      : `${score}/${activity.totalPoints}`;
+
+    logAudit({
+      req,
+      action: isUpdate ? "SCORE_UPDATED" : "SCORE_RECORDED",
+      category: "grades",
+      target: {
+        entityType: "Score",
+        entityId: String(savedScore._id),
+        name: `${student.name} · ${activity.title} (${score}/${activity.totalPoints})`,
+      },
+      description: `${isUpdate ? "Updated" : "Recorded"} score for ${student.name} in '${activity.title}' (${scoreDiff})`,
+      details: {
+        studentId: student._id,
+        studentName: student.name,
+        activityId: activity._id,
+        activityTitle: activity.title,
+        totalPoints: activity.totalPoints,
+        classId: classData._id,
+        className: classData.name,
+        subject: subjectAssignment?.subject || "",
+        previousScore,
+        newScore: Number(score),
+        remarks: remarks || "",
+      },
+    });
 
     res.status(200).json(savedScore);
   } catch (error) {

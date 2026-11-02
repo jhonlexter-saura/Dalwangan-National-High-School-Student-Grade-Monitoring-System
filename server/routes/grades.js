@@ -18,6 +18,7 @@ const {
   getTokenUserId,
   requireAuthenticatedUser,
 } = require("../middleware/authorization");
+const { logAudit } = require("../services/auditLogger");
 
 const router = express.Router();
 
@@ -147,6 +148,27 @@ router.post("/assignment/:assignmentId/period/:periodId/finalize", requireAuthen
         message: `Your ${assignment.subject} grade for ${assignment.class.name} (${assignment.class.section}) — ${period?.name || "this period"} is ready to view.`,
         link: "/student/grades",
       });
+      logAudit({
+        req,
+        action: "GRADEBOOK_FINALIZED",
+        category: "grades",
+        target: {
+          entityType: "SubjectGradebook",
+          entityId: String(gradebook._id),
+          name: `${assignment.class.name} · ${assignment.subject} (${period?.name || "Term"})`,
+        },
+        description: `Finalized subject gradebook for ${assignment.class.name} (${assignment.class.section}) — ${assignment.subject} (${period?.name || "Term"})`,
+        details: {
+          classId: assignment.class._id,
+          subjectAssignmentId: assignment._id,
+          className: assignment.class.name,
+          section: assignment.class.section,
+          subject: assignment.subject,
+          periodId,
+          periodName: period?.name,
+          finalizedAt: gradebook.finalizedAt,
+        },
+      });
     } catch (error) {
       console.error("Failed to prepare student subject-grade notifications:", error.message);
     }
@@ -177,6 +199,26 @@ router.post("/assignment/:assignmentId/period/:periodId/unlock", requireAuthenti
         title: `${assignment.subject} gradebook unlocked`,
         message: `The ${assignment.subject} gradebook for ${assignment.class.name} (${assignment.class.section}) — ${period?.name || "this period"} was unlocked by an administrator.`,
         link: `/teacher/scores?assignmentId=${assignmentId}&periodId=${periodId}`,
+      });
+      logAudit({
+        req,
+        action: "GRADEBOOK_UNLOCKED",
+        category: "grades",
+        target: {
+          entityType: "SubjectGradebook",
+          entityId: String(deleted._id),
+          name: `${assignment.class.name} · ${assignment.subject} (${period?.name || "Term"})`,
+        },
+        description: `Unlocked subject gradebook for ${assignment.class.name} (${assignment.class.section}) — ${assignment.subject} (${period?.name || "Term"})`,
+        details: {
+          classId: assignment.class._id,
+          subjectAssignmentId: assignment._id,
+          className: assignment.class.name,
+          section: assignment.class.section,
+          subject: assignment.subject,
+          periodId,
+          periodName: period?.name,
+        },
       });
     } catch (error) {
       console.error("Failed to prepare subject unlock notification:", error.message);
@@ -403,6 +445,25 @@ router.post("/class/:classId/period/:periodId/finalize", requireAuthenticatedUse
           link: "/student/grades",
         }
       );
+      logAudit({
+        req,
+        action: "CLASS_GRADEBOOK_FINALIZED",
+        category: "grades",
+        target: {
+          entityType: "ClassGradebook",
+          entityId: String(gradebook._id),
+          name: `${classRecord.name} · Section ${classRecord.section} (${periodName})`,
+        },
+        description: `Finalized class gradebook for ${classRecord.name} (${classRecord.section}) — ${periodName}`,
+        details: {
+          classId: classRecord._id,
+          className: classRecord.name,
+          section: classRecord.section,
+          periodId,
+          periodName,
+          finalizedAt: gradebook.finalizedAt,
+        },
+      });
     } catch (notificationError) {
       console.error("Failed to prepare student grade notifications:", notificationError.message);
     }
@@ -468,6 +529,24 @@ router.post("/class/:classId/period/:periodId/unlock", requireAuthenticatedUser,
         title: "Gradebook unlocked",
         message: `The finalized grades for ${classRecord.name} (${classRecord.section}) — ${periodName} were unlocked by an administrator. You can now make updates.`,
         link: `/teacher/scores?classId=${classId}&periodId=${periodId}`,
+      });
+      logAudit({
+        req,
+        action: "CLASS_GRADEBOOK_UNLOCKED",
+        category: "grades",
+        target: {
+          entityType: "ClassGradebook",
+          entityId: String(existing._id),
+          name: `${classRecord.name} · Section ${classRecord.section} (${periodName})`,
+        },
+        description: `Unlocked class gradebook for ${classRecord.name} (${classRecord.section}) — ${periodName}`,
+        details: {
+          classId: classRecord._id,
+          className: classRecord.name,
+          section: classRecord.section,
+          periodId,
+          periodName,
+        },
       });
     } catch (notificationError) {
       console.error("Failed to prepare teacher grade notification:", notificationError.message);

@@ -4,6 +4,7 @@ const Student = require("../models/Student");
 const Class = require("../models/Class");
 const User = require("../models/User");
 const { requireAdmin } = require("../middleware/authorization");
+const { logAudit } = require("../services/auditLogger");
 
 const router = express.Router();
 
@@ -69,6 +70,20 @@ router.patch("/:id/status", requireAdmin, async (req, res) => {
 
     student.status = status;
     await student.save();
+
+    logAudit({
+      req,
+      action: "STUDENT_STATUS_CHANGED",
+      category: "students",
+      target: {
+        entityType: "Student",
+        entityId: String(student._id),
+        name: student.name,
+      },
+      description: `Updated status for student '${student.name}' to ${status}`,
+      details: { studentId: student.studentId, name: student.name, newStatus: status },
+    });
+
     return res.json(student);
   } catch (error) {
     console.error("Update student account status error:", error);
@@ -105,6 +120,15 @@ router.patch("/:id", requireAdmin, async (req, res) => {
     if (!student) {
       return res.status(404).json({ error: "Student not found" });
     }
+
+    const previousProfile = {
+      studentId: student.studentId,
+      name: student.name,
+      email: student.email,
+      gradeLevel: student.gradeLevel,
+      section: student.section,
+      schoolYear: student.schoolYear,
+    };
 
     const studentId =
       typeof req.body.studentId === "string"
@@ -181,6 +205,18 @@ router.patch("/:id", requireAdmin, async (req, res) => {
       );
     }
 
+    logAudit({
+      req,
+      action: "STUDENT_UPDATED",
+      category: "students",
+      target: { entityType: "Student", entityId: String(student._id), name },
+      description: `Updated student profile for ${name}`,
+      details: {
+        before: previousProfile,
+        after: { studentId, name, email, gradeLevel, section, schoolYear },
+      },
+    });
+
     return res.json(student);
   } catch (error) {
     console.error("Update student profile error:", error);
@@ -239,6 +275,19 @@ router.post("/", async (req, res) => {
       gradeLevel,
       section,
       schoolYear,
+    });
+
+    logAudit({
+      req,
+      action: "STUDENT_CREATED",
+      category: "students",
+      target: {
+        entityType: "Student",
+        entityId: String(student._id),
+        name: student.name,
+      },
+      description: `Created student record for '${student.name}' (${student.studentId})`,
+      details: { studentId: student.studentId, name: student.name, gradeLevel: student.gradeLevel, section: student.section },
     });
 
     res.status(201).json(student);
@@ -319,6 +368,17 @@ router.post(
         class: updatedClass,
         addedCount: idsToAdd.length,
       });
+
+      if (idsToAdd.length > 0) {
+        logAudit({
+          req,
+          action: "STUDENTS_ENROLLED",
+          category: "students",
+          target: { entityType: "Class", entityId: String(classData._id), name: `${classData.name} · Section ${classData.section}` },
+          description: `Enrolled ${idsToAdd.length} student(s) in ${classData.name} (${classData.section})`,
+          details: { classId: classData._id, className: classData.name, studentIds: idsToAdd.map(String), addedCount: idsToAdd.length },
+        });
+      }
     } catch (error) {
       console.error(
         "Teacher batch add students error:",
@@ -379,6 +439,17 @@ router.post("/batch/classes/:classId", async (req, res) => {
       class: updatedClass,
       addedCount: idsToAdd.length,
     });
+
+    if (idsToAdd.length > 0) {
+      logAudit({
+        req,
+        action: "STUDENTS_ENROLLED",
+        category: "students",
+        target: { entityType: "Class", entityId: String(classData._id), name: `${classData.name} · Section ${classData.section}` },
+        description: `Enrolled ${idsToAdd.length} student(s) in ${classData.name} (${classData.section})`,
+        details: { classId: classData._id, className: classData.name, studentIds: idsToAdd.map(String), addedCount: idsToAdd.length },
+      });
+    }
   } catch (error) {
     console.error(
       "Batch add students error:",
@@ -426,6 +497,19 @@ router.post("/:studentId/classes/:classId", async (req, res) => {
     await classData.save();
 
     const updatedClass = await Class.findById(classId).populate("students");
+
+    logAudit({
+      req,
+      action: "STUDENT_ENROLLED",
+      category: "students",
+      target: {
+        entityType: "ClassRoster",
+        entityId: String(classData._id),
+        name: `${classData.name} · Section ${classData.section}`,
+      },
+      description: `Enrolled student '${student.name}' in class '${classData.name}'`,
+      details: { studentId: student._id, studentName: student.name, classId: classData._id, className: classData.name },
+    });
 
     res.json({
       message: "Student added to class successfully",
@@ -534,6 +618,20 @@ router.delete("/:studentId/classes/:classId", requireAdmin, async (req, res) => 
     }
     classData.students = classData.students.filter((id) => String(id) !== String(studentId));
     await classData.save();
+
+    logAudit({
+      req,
+      action: "STUDENT_REMOVED",
+      category: "students",
+      target: {
+        entityType: "ClassRoster",
+        entityId: String(classData._id),
+        name: `${classData.name} · Section ${classData.section}`,
+      },
+      description: `Removed student from class '${classData.name}'`,
+      details: { studentId, classId },
+    });
+
     return res.json({ message: "Student removed from class", classId, studentId });
   } catch (error) {
     console.error("Remove student from class error:", error.message);
