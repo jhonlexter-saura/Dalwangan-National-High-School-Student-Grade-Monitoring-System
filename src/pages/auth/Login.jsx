@@ -4,13 +4,15 @@ import { getPublicIntegrationSettings } from "../../services/schoolDataService";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { GoogleLogin } from "@react-oauth/google";
 import ReCAPTCHA from "react-google-recaptcha";
+import { Fingerprint } from "lucide-react";
 
 import { useAuth } from "../../context/AuthContext";
 
 function Login() {
-  const { user, login, loginWithGoogle } = useAuth();
+  const { user, login, loginWithGoogle, loginWithPasskey } = useAuth();
   const navigate = useNavigate();
   const captchaRef = useRef(null);
+  const passkeySupported = typeof window !== "undefined" && "PublicKeyCredential" in window;
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -111,6 +113,20 @@ function Login() {
       finishLogin(result);
     } catch {
       setError("Google sign-in failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePasskeyLogin = async () => {
+    if (!email.trim()) {
+      setError("Enter your administrator email first.");
+      return;
+    }
+    setError("");
+    setLoading(true);
+    try {
+      finishLogin(await loginWithPasskey(email.trim()));
     } finally {
       setLoading(false);
     }
@@ -222,7 +238,7 @@ function Login() {
           </button>
         </form>
 
-        {integrations.googleSignIn && (
+        {(integrations.googleSignIn || passkeySupported) && (
         <>
           <div className="my-5 flex items-center gap-3">
             <div className="h-px flex-1 bg-gray-200" />
@@ -230,23 +246,19 @@ function Login() {
             <div className="h-px flex-1 bg-gray-200" />
           </div>
 
-          <div className="flex justify-center">
-            <GoogleLogin
-              onSuccess={handleGoogleSuccess}
-              onError={() =>
-                setError("Google sign-in was cancelled or failed.")
-              }
-              useOneTap={false}
-              text="signin_with"
-              shape="rectangular"
-              width="320"
-            />
+          <div className="flex flex-col items-center gap-3">
+            {passkeySupported && <button type="button" onClick={handlePasskeyLogin} disabled={loading || !email.trim()} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-800 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"><Fingerprint size={18} />{loading ? "Verifying passkey…" : "Sign in with Passkey"}</button>}
+            {integrations.googleSignIn && <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={() => setError("Google sign-in was cancelled or failed.")}
+                useOneTap={false}
+                text="signin_with"
+                shape="rectangular"
+                width="320"
+              />}
           </div>
 
-          <p className="mt-4 text-center text-xs text-gray-500">
-            Google sign-in is available only for existing, active
-            DNHS-SGMS accounts.
-          </p>
+          {integrations.googleSignIn && <p className="mt-4 text-center text-xs text-gray-500">Google sign-in is available only for existing, active DNHS-SGMS accounts.</p>}
         </>
       )}
       </div>

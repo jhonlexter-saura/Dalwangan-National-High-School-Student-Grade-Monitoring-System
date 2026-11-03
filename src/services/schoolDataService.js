@@ -214,6 +214,45 @@ export function loginUser(data) {
   });
 }
 
+export function getAdminPasskeys() {
+  return request("/auth/passkeys");
+}
+
+export function getPasskeyRegistrationOptions(password) {
+  return request("/auth/passkeys/register/options", {
+    method: "POST",
+    body: JSON.stringify({ password }),
+  });
+}
+
+export function verifyPasskeyRegistration(data) {
+  return request("/auth/passkeys/register/verify", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteAdminPasskey(id, password) {
+  return request(`/auth/passkeys/${id}`, {
+    method: "DELETE",
+    body: JSON.stringify({ password }),
+  });
+}
+
+export function getPasskeyLoginOptions(email) {
+  return request("/auth/passkeys/login/options", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export function verifyPasskeyLogin(data) {
+  return request("/auth/passkeys/login/verify", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
 export function forgotPassword(data) {
   return request("/auth/forgot-password", {
     method: "POST",

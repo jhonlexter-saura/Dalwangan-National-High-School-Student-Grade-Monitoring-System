@@ -20,7 +20,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useState } from "react";
 
 // Put the uploaded logo here: src/assets/dnhs-logo.svg
-import dnhsLogo from "../../../public/dnhs-logo.svg";
+import dnhsLogo from "../../assets/dnhs-logo.svg";
 
 /*
  * Palette pulled from the DNHS logo

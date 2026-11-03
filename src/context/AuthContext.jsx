@@ -9,7 +9,10 @@ import {
 import {
   loginUser,
   loginWithGoogle as googleLoginRequest,
+  getPasskeyLoginOptions,
+  verifyPasskeyLogin,
 } from "../services/schoolDataService";
+import { startAuthentication } from "@simplewebauthn/browser";
 
 const AuthContext = createContext(null);
 
@@ -84,6 +87,22 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const loginWithPasskey = async (email) => {
+    try {
+      const { options } = await getPasskeyLoginOptions(email);
+      const response = await startAuthentication({ optionsJSON: options });
+      const result = await verifyPasskeyLogin({ response, challenge: options.challenge });
+      return establishSession(result);
+    } catch (error) {
+      return {
+        success: false,
+        message: error.name === "NotAllowedError"
+          ? "Passkey sign-in was cancelled or timed out."
+          : error.message || "Passkey sign-in failed.",
+      };
+    }
+  };
+
   const logout = useCallback(() => {
     setUser(null);
     localStorage.removeItem("dnhs_user");
@@ -96,6 +115,7 @@ export function AuthProvider({ children }) {
         user,
         login,
         loginWithGoogle,
+        loginWithPasskey,
         logout,
         updateUser,
       }}

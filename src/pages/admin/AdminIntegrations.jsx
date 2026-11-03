@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  Fingerprint,
   Globe,
   ShieldCheck,
   Mail,
@@ -8,14 +9,21 @@ import {
   AlertCircle,
   Database,
   KeyRound,
+  Download,
+  FileSpreadsheet,
+  FileText,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { useToast } from "../../context/ToastContext";
 
 import {
   getIntegrationSettings,
   updateIntegrationSetting,
   updateCustomIntegrationConfig,
+  exportAuditLogs,
+  getAuditLogExportData,
 } from "../../services/schoolDataService";
+import { downloadAdminAuditPdf, downloadAdminAuditXlsx } from "../../utils/adminAuditExports";
 
 const INTEGRATIONS = [
   {
@@ -42,6 +50,16 @@ const INTEGRATIONS = [
     detail: "Uses the Gmail mailer credentials configured on the server.",
     Icon: Mail,
   },
+  {
+    key: "adminPasskeys",
+    title: "Admin Passkeys",
+    description:
+      "Let active administrator accounts sign in with a device passkey or security key.",
+    detail: "Uses SimpleWebAuthn. Add or remove your devices from your administrator profile.",
+    Icon: Fingerprint,
+    available: true,
+    managementPath: "/admin/profile",
+  },
 ];
 
 function AdminIntegrations() {
@@ -53,6 +71,7 @@ function AdminIntegrations() {
   });
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState("");
+  const [exportingFormat, setExportingFormat] = useState("");
   const [error, setError] = useState("");
   const [customConfig, setCustomConfig] = useState({});
   const [draft, setDraft] = useState({
@@ -129,6 +148,32 @@ function AdminIntegrations() {
     }
   }
 
+  async function handleExport(format) {
+    setExportingFormat(format);
+    try {
+      if (format === "csv") {
+        const blob = await exportAuditLogs({});
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = `DNHS-SGMS-Audit-Logs-${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } else {
+        const { logs } = await getAuditLogExportData({});
+        if (format === "xlsx") downloadAdminAuditXlsx({ logs });
+        else downloadAdminAuditPdf({ logs, filters: {} });
+      }
+      showToast(`${format === "xlsx" ? "Excel spreadsheet" : format.toUpperCase()} export downloaded.`, "success");
+    } catch (exportError) {
+      showToast(exportError.message || `Unable to export ${format.toUpperCase()} data.`, "error");
+    } finally {
+      setExportingFormat("");
+    }
+  }
+
   const inputClass = "mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100";
   const cardClass = "rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6";
 
@@ -179,14 +224,14 @@ function AdminIntegrations() {
                 Connected technologies
               </h2>
               <p className="text-sm text-slate-500">
-                Changes are saved to the database.
+                Manage service settings and account security options.
               </p>
             </div>
           </div>
 
           <div className="mt-5 divide-y divide-slate-100">
-            {INTEGRATIONS.map(({ key, title, description, detail, Icon }) => {
-              const enabled = settings[key];
+            {INTEGRATIONS.map(({ key, title, description, detail, Icon, available, managementPath }) => {
+              const enabled = available || settings[key];
               const saving = savingKey === key;
 
               return (
@@ -211,7 +256,7 @@ function AdminIntegrations() {
                               : "bg-slate-100 text-slate-600"
                           }`}
                         >
-                          {enabled ? "Enabled" : "Disabled"}
+                          {available ? "Available" : enabled ? "Enabled" : "Disabled"}
                         </span>
                       </div>
 
@@ -224,7 +269,7 @@ function AdminIntegrations() {
                     </div>
                   </div>
 
-                  <button
+                  {managementPath ? <Link to={managementPath} className="inline-flex shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-100">Manage passkeys</Link> : <button
                     type="button"
                     role="switch"
                     aria-checked={Boolean(enabled)}
@@ -243,7 +288,7 @@ function AdminIntegrations() {
                     {saving && (
                       <span className="sr-only">Saving setting</span>
                     )}
-                  </button>
+                  </button>}
                 </article>
               );
             })}
@@ -254,6 +299,32 @@ function AdminIntegrations() {
               Loading integration settings…
             </p>
           )}
+        </section>
+
+        <section className={cardClass}>
+          <div>
+            <p className="text-sm font-medium text-blue-700">Reports</p>
+            <h2 className="mt-1 text-xl font-bold text-slate-900">Report &amp; Data Export</h2>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">Export all Activity Monitor records in a printable or editable format.</p>
+          </div>
+          <div className="mt-3 divide-y divide-slate-100">
+            {[
+              { key: "pdf", title: "PDF Export", description: "Generate a printable audit activity report.", Icon: FileText, action: "Export PDF" },
+              { key: "xlsx", title: "Excel Export", description: "Export editable audit records as a spreadsheet.", Icon: FileSpreadsheet, action: "Export Excel" },
+              { key: "csv", title: "CSV Export", description: "Download audit data in a portable CSV format.", Icon: Database, action: "Export CSV" },
+            ].map(({ key, title, description, Icon, action }) => (
+              <article key={key} className="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-center gap-4">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700"><Icon size={22} /></div>
+                  <div className="min-w-0"><h3 className="font-semibold text-slate-900">{title}</h3><p className="mt-1 text-sm leading-6 text-slate-600">{description}</p></div>
+                </div>
+                <div className="flex shrink-0 items-center gap-2 sm:justify-end">
+                  <span className="rounded-full bg-green-100 px-2.5 py-1 text-xs font-semibold text-green-800">Available</span>
+                  <button type="button" onClick={() => handleExport(key)} disabled={Boolean(exportingFormat)} className="min-w-28 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">{exportingFormat === key ? "Preparing…" : action}</button>
+                </div>
+              </article>
+            ))}
+          </div>
         </section>
 
         <section className="space-y-4">

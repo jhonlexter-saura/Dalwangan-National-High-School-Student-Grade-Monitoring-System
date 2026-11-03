@@ -18,6 +18,7 @@ const notificationRoutes = require("./routes/notifications");
 const subjectAssignmentRoutes = require("./routes/subjectAssignments");
 const integrationRoutes = require("./routes/integrations");
 const auditLogRoutes = require("./routes/auditLogs");
+const passkeyRoutes = require("./routes/passkeys");
 
 dotenv.config({ path: path.resolve(__dirname, ".env") });
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
@@ -33,6 +34,7 @@ app.use(cors());
 app.use(express.json());
 
 app.use("/api/auth", authRoutes);
+app.use("/api/auth/passkeys", passkeyRoutes);
 app.use("/api/integrations", integrationRoutes);
 
 app.use("/api/classes", classRoutes);
