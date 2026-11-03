@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
 import { UserCircle, Edit2, Save, X, Loader2 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
 
 function AdminProfile() {
   const { user, updateUser } = useAuth();
+  const { showToast } = useToast();
 
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -13,7 +15,7 @@ function AdminProfile() {
     contactNumber: "",
     address: "",
   });
-  const [message, setMessage] = useState({ type: "", text: "" });
+  const [error, setError] = useState("");
 
   // Keep form data in sync with current user state
   useEffect(() => {
@@ -44,21 +46,18 @@ function AdminProfile() {
         address: user.address || user.location || "",
       });
     }
-    setMessage({ type: "", text: "" });
+    setError("");
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setMessage({ type: "", text: "" });
+    setError("");
 
     const userId = user?._id || user?.id || user?.userId;
 
     if (!userId) {
-      setMessage({
-        type: "error",
-        text: "User ID not found in current session. Please log in again.",
-      });
+      setError("User ID not found in current session. Please log in again.");
       setLoading(false);
       return;
     }
@@ -96,13 +95,10 @@ function AdminProfile() {
         updateUser(updatedUser);
       }
 
-      setMessage({ type: "success", text: "Profile updated successfully!" });
+      showToast("Profile updated successfully.", "success");
       setIsEditing(false);
     } catch (error) {
-      setMessage({
-        type: "error",
-        text: error.message || "Failed to update profile.",
-      });
+      setError(error.message || "Failed to update profile.");
     } finally {
       setLoading(false);
     }
@@ -131,15 +127,9 @@ function AdminProfile() {
         )}
       </div>
 
-      {message.text && (
-        <div
-          className={`mt-4 max-w-lg rounded-md p-3 text-sm ${
-            message.type === "success"
-              ? "border border-green-200 bg-green-50 text-green-700"
-              : "border border-red-200 bg-red-50 text-red-700"
-          }`}
-        >
-          {message.text}
+      {error && (
+        <div className="mt-4 max-w-lg rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">
+          {error}
         </div>
       )}
 

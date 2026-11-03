@@ -41,7 +41,6 @@ export default function AdminStudentAccounts() {
 
   const [assigning, setAssigning] = useState(false);
   const [updatingStudentId, setUpdatingStudentId] = useState("");
-  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
   // -----------------------------------------
@@ -131,16 +130,13 @@ export default function AdminStudentAccounts() {
     try {
       setAssigning(true);
       setError("");
-      setMessage("");
 
       await addStudentToClass(
         assignStudent._id,
         assignClassId
       );
 
-      setMessage(
-        `${assignStudent.name} was assigned to the class successfully.`
-      );
+      showToast(`${assignStudent.name} was assigned to the class successfully.`, "success");
 
       setAssignStudent(null);
       setAssignClassId("");
@@ -161,7 +157,6 @@ export default function AdminStudentAccounts() {
 
   const openAssignModal = (student) => {
     setError("");
-    setMessage("");
     setAssignClassId("");
     setAssignStudent(student);
   };
@@ -237,12 +232,6 @@ export default function AdminStudentAccounts() {
         {/* -------------------------------- */}
         {/* Messages */}
         {/* -------------------------------- */}
-
-        {message && (
-          <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-            {message}
-          </div>
-        )}
 
         {error && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

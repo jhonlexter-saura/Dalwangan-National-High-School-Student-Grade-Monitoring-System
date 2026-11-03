@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { Eye, EyeOff, UserPlus } from "lucide-react";
 import { createUser } from "../../services/schoolDataService";
+import { useToast } from "../../context/ToastContext";
 
 const EMPTY_FORM = { studentId: "", name: "", email: "", password: "" };
 
 export default function AdminStudentAccountCreate() {
+  const { showToast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState(EMPTY_FORM);
-  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -17,7 +18,6 @@ export default function AdminStudentAccountCreate() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    setMessage("");
     setError("");
 
     if (!formData.studentId.trim() || !formData.name.trim() || !formData.email.trim() || !formData.password) {
@@ -38,7 +38,7 @@ export default function AdminStudentAccountCreate() {
         role: "student",
         studentId: formData.studentId.trim(),
       });
-      setMessage("Student account created successfully. Give the temporary password to the student and ask them to change it after signing in.");
+      showToast("Student account created. Give the temporary password to the student and ask them to change it after signing in.", "success", 7000);
       setFormData(EMPTY_FORM);
     } catch (err) {
       setError(err.message || "Failed to create student account.");
@@ -90,8 +90,6 @@ export default function AdminStudentAccountCreate() {
           </div>
 
           {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
-          {message && <div role="status" className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm leading-5 text-green-800">{message}</div>}
-
           <button type="submit" disabled={saving} className="w-full rounded-lg bg-blue-700 px-4 py-2.5 font-medium text-white transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60">
             {saving ? "Creating account…" : "Create Student Account"}
           </button>

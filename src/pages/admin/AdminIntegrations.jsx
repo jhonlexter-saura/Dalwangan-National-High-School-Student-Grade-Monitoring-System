@@ -6,10 +6,10 @@ import {
   Plug,
   RefreshCw,
   AlertCircle,
-  CheckCircle2,
   Database,
   KeyRound,
 } from "lucide-react";
+import { useToast } from "../../context/ToastContext";
 
 import {
   getIntegrationSettings,
@@ -45,6 +45,7 @@ const INTEGRATIONS = [
 ];
 
 function AdminIntegrations() {
+  const { showToast } = useToast();
   const [settings, setSettings] = useState({
     googleSignIn: true,
     recaptcha: true,
@@ -53,7 +54,6 @@ function AdminIntegrations() {
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState("");
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
   const [customConfig, setCustomConfig] = useState({});
   const [draft, setDraft] = useState({
     databaseUri: "",
@@ -90,13 +90,12 @@ function AdminIntegrations() {
     const nextValue = !settings[key];
     setSavingKey(key);
     setError("");
-    setNotice("");
 
     try {
       const result = await updateIntegrationSetting(key, nextValue);
 
       setSettings(result.settings);
-      setNotice(result.message || "Integration setting saved.");
+      showToast(result.message || "Integration setting saved.", "success");
     } catch (err) {
       setError(err.message || "Unable to save the setting.");
     } finally {
@@ -108,11 +107,10 @@ function AdminIntegrations() {
     if (savingKey) return;
     setSavingKey(group);
     setError("");
-    setNotice("");
     try {
       const result = await updateCustomIntegrationConfig(values);
       setCustomConfig(result.customConfig || {});
-      setNotice(result.message || "Custom settings saved.");
+      showToast(result.message || "Custom settings saved.", "success", 6500);
       const draftFieldByEnvKey = {
         CUSTOM_DATABASE_URI: "databaseUri",
         CUSTOM_AUTH_TOKEN_SECRET: "tokenSecret",
@@ -168,16 +166,6 @@ function AdminIntegrations() {
           >
             <AlertCircle size={18} className="mt-0.5 shrink-0" />
             <span>{error}</span>
-          </div>
-        )}
-
-        {notice && (
-          <div
-            role="status"
-            className="flex items-start gap-2 rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800"
-          >
-            <CheckCircle2 size={18} className="mt-0.5 shrink-0" />
-            <span>{notice}</span>
           </div>
         )}
 

@@ -452,6 +452,10 @@ export function getMyGrades() {
   return request("/grades/student/me");
 }
 
+export function getStudentDashboardData() {
+  return request("/grades/student/me/dashboard");
+}
+
 // -----------------------------
 // Audit Logs (Admin only)
 // -----------------------------

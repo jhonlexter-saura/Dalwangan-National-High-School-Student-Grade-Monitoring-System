@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createUser } from "../../services/schoolDataService";
+import { useToast } from "../../context/ToastContext";
 
 export default function AdminTeacherAccountCreate() {
   const navigate = useNavigate();
+  const { showToast } = useToast();
 
   const [formData, setFormData] = useState({
     name: "",
@@ -11,7 +13,6 @@ export default function AdminTeacherAccountCreate() {
     password: "",
   });
 
-  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -27,7 +28,6 @@ export default function AdminTeacherAccountCreate() {
   const handleSubmit = async (event) => {
     event.preventDefault();
 
-    setMessage("");
     setError("");
 
     if (formData.password.length < 6) {
@@ -45,7 +45,7 @@ export default function AdminTeacherAccountCreate() {
         role: "teacher",
       });
 
-      setMessage("Teacher account created successfully.");
+      showToast("Teacher account created successfully.", "success");
 
       setFormData({
         name: "",
@@ -72,12 +72,6 @@ export default function AdminTeacherAccountCreate() {
       </div>
 
       <div className="max-w-2xl rounded-xl border bg-white p-6 shadow-sm">
-        {message && (
-          <div className="mb-5 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-            {message}
-          </div>
-        )}
-
         {error && (
           <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Save, UserRound, Mail, MapPin, Phone, CalendarDays } from "lucide-react";
 
 import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
 import {
   getMyProfile,
   updateMyProfile,
@@ -49,13 +50,13 @@ function Field({
 
 function TeacherProfile() {
   const { user, updateUser } = useAuth();
+  const { showToast } = useToast();
 
   const [form, setForm] = useState(initialForm);
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -105,14 +106,12 @@ function TeacherProfile() {
     }));
 
     setError("");
-    setSuccess("");
   }
 
   async function handleSubmit(event) {
     event.preventDefault();
 
     setError("");
-    setSuccess("");
 
     if (!form.firstName.trim() || !form.lastName.trim()) {
       setError("First name and last name are required.");
@@ -149,7 +148,7 @@ function TeacherProfile() {
         _id: updatedProfile._id || user?._id,
       });
 
-      setSuccess("Your profile has been saved.");
+      showToast("Your profile has been saved.", "success");
     } catch (err) {
       setError(err.message || "Unable to save your profile.");
     } finally {
@@ -310,18 +309,9 @@ function TeacherProfile() {
           </label>
         </div>
 
-        {(error || success) && (
-          <div className="px-6 pb-2" aria-live="polite">
-            {error && (
-              <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-                {error}
-              </p>
-            )}
-            {success && (
-              <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
-                {success}
-              </p>
-            )}
+        {error && (
+          <div className="px-6 pb-2" role="alert">
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
           </div>
         )}
 
