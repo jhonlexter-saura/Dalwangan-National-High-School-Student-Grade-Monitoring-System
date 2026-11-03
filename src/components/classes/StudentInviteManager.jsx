@@ -19,7 +19,7 @@ import {
 } from "../../services/schoolDataService";
 
 function normalizeGrade(grade) {
-  if (grade === undefined || grade === null) return null;
+  if (grade === undefined || grade === null || String(grade).trim() === "") return null;
   const num = parseInt(String(grade).replace(/\D/g, ""), 10);
   return isNaN(num) ? String(grade).trim().toLowerCase() : num;
 }
@@ -93,7 +93,9 @@ export default function StudentInviteManager({
 
     students.forEach((s) => {
       const sGrade = normalizeGrade(s.gradeLevel);
-      if (sGrade === classGrade) {
+      // New accounts without an academic placement remain eligible until they
+      // are assigned to their first class.
+      if (sGrade === classGrade || sGrade === null) {
         count++;
         const sId = String(s._id || s.id);
         if (!enrolledIds.has(sId)) {
@@ -211,7 +213,7 @@ export default function StudentInviteManager({
             Grade {classData?.gradeLevel}
           </span>
           <span className="font-medium text-gray-700">
-            Showing registered Grade {classData?.gradeLevel} students
+            Showing Grade {classData?.gradeLevel} students and unassigned students
           </span>
         </div>
         <span className="text-gray-500">
@@ -322,21 +324,20 @@ export default function StudentInviteManager({
           <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-center text-sm text-gray-500">
             <AlertCircle className="mx-auto mb-2 h-8 w-8 text-amber-500 opacity-80" />
             <p className="font-medium text-gray-700">
-              No Grade {classData?.gradeLevel} students found
+              No eligible students found
             </p>
             <p className="mt-1 text-xs text-gray-400">
-              There are currently no registered students assigned to Grade{" "}
-              {classData?.gradeLevel}.
+              There are no registered students in Grade {classData?.gradeLevel} who are not yet in this class.
             </p>
           </div>
         ) : eligibleStudents.length === 0 ? (
           <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-center text-sm text-gray-500">
             <UserCheck className="mx-auto mb-2 h-8 w-8 text-green-600 opacity-80" />
             <p className="font-medium text-gray-700">
-              All Grade {classData?.gradeLevel} students are enrolled!
+              All eligible students are enrolled!
             </p>
             <p className="mt-1 text-xs text-gray-400">
-              Every registered Grade {classData?.gradeLevel} student (
+              Every eligible Grade {classData?.gradeLevel} or unassigned student (
               {allGradeCount}) is already in this class.
             </p>
           </div>
@@ -345,7 +346,7 @@ export default function StudentInviteManager({
             <Search className="mx-auto mb-2 h-7 w-7 text-gray-400" />
             <p className="font-medium text-gray-700">No matching students</p>
             <p className="mt-1 text-xs text-gray-400">
-              No Grade {classData?.gradeLevel} students matched &quot;
+              No eligible students matched &quot;
               {searchQuery}&quot;. Try searching by name, student ID, or email.
             </p>
           </div>

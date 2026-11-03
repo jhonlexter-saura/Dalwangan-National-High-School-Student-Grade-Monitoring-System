@@ -33,18 +33,18 @@ const studentSchema = new mongoose.Schema(
 
     gradeLevel: {
       type: Number,
-      required: true,
+      default: null,
     },
 
     section: {
       type: String,
-      required: true,
+      default: "",
       trim: true,
     },
 
     schoolYear: {
       type: String,
-      required: true,
+      default: "",
       trim: true,
     },
 

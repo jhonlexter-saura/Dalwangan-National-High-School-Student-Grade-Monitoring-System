@@ -147,19 +147,15 @@ router.post("/", requireAdmin, async (req, res) => {
       const normalizedStudentId = cleanString(studentId);
       const normalizedSection = cleanString(section);
       const normalizedSchoolYear = cleanString(schoolYear);
-      const normalizedGradeLevel = Number(gradeLevel);
+      const hasGradeLevel = gradeLevel !== undefined && gradeLevel !== null && gradeLevel !== "";
+      const normalizedGradeLevel = hasGradeLevel ? Number(gradeLevel) : null;
 
       if (
         !normalizedStudentId ||
-        !normalizedSection ||
-        !normalizedSchoolYear ||
-        !Number.isInteger(normalizedGradeLevel) ||
-        normalizedGradeLevel < 7 ||
-        normalizedGradeLevel > 12
+        (hasGradeLevel && (!Number.isInteger(normalizedGradeLevel) || normalizedGradeLevel < 7 || normalizedGradeLevel > 12))
       ) {
         return res.status(400).json({
-          error:
-            "Student ID, grade level (7-12), section, and school year are required",
+          error: "A student LRN is required. If grade level is provided, it must be between 7 and 12.",
         });
       }
 
@@ -179,8 +175,8 @@ router.post("/", requireAdmin, async (req, res) => {
       studentData = {
         studentId: normalizedStudentId,
         gradeLevel: normalizedGradeLevel,
-        section: normalizedSection,
-        schoolYear: normalizedSchoolYear,
+        section: normalizedSection || "",
+        schoolYear: normalizedSchoolYear || "",
       };
     }
 

@@ -6,7 +6,7 @@ let temporaryTokenSecret;
 let warnedAboutTemporarySecret = false;
 
 function getTokenSecret() {
-  const secret = process.env.AUTH_TOKEN_SECRET;
+  const secret = process.env.CUSTOM_AUTH_TOKEN_SECRET?.trim() || process.env.AUTH_TOKEN_SECRET;
 
   if (secret && Buffer.byteLength(secret) >= 32) {
     return secret;
@@ -31,8 +31,8 @@ function getTokenSecret() {
 }
 
 function isAuthenticationConfigured() {
-  return !process.env.AUTH_TOKEN_SECRET ||
-    Buffer.byteLength(process.env.AUTH_TOKEN_SECRET) >= 32;
+  const secret = process.env.CUSTOM_AUTH_TOKEN_SECRET?.trim() || process.env.AUTH_TOKEN_SECRET;
+  return !secret || Buffer.byteLength(secret) >= 32;
 }
 
 function createAccessToken(userId) {

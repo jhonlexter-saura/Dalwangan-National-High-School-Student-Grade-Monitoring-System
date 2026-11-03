@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
 const dns = require("dns");
+const path = require("path");
 
 const connectDB = require("./config/db");
 
@@ -18,7 +19,8 @@ const subjectAssignmentRoutes = require("./routes/subjectAssignments");
 const integrationRoutes = require("./routes/integrations");
 const auditLogRoutes = require("./routes/auditLogs");
 
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, ".env") });
+dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
 dns.setServers([
   "8.8.8.8",

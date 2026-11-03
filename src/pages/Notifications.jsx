@@ -105,7 +105,7 @@ export default function Notifications() {
           <div className="p-12 text-center">
             <Bell className="mx-auto h-10 w-10 text-gray-300" />
             <p className="mt-3 font-medium text-gray-700">You’re all caught up</p>
-            <p className="mt-1 text-sm text-gray-500">New grade updates will appear here.</p>
+            <p className="mt-1 text-sm text-gray-500">New grade, class, and subject assignment updates will appear here.</p>
           </div>
         ) : (
           <div className="divide-y divide-gray-100">

@@ -347,6 +347,16 @@ export function updateIntegrationSetting(key, enabled) {
   });
 }
 
+export function updateCustomIntegrationConfig(customConfig) {
+  return request("/integrations/custom-config", {
+    method: "PUT",
+    body: JSON.stringify({ customConfig }),
+  }).then((result) => {
+    window.dispatchEvent(new Event("dnhs:integration-config-updated"));
+    return result;
+  });
+}
+
 // -----------------------------
 // Grades
 // -----------------------------

@@ -3,10 +3,50 @@ const mongoose = require("mongoose");
 const Student = require("../models/Student");
 const Class = require("../models/Class");
 const User = require("../models/User");
+const Notification = require("../models/Notification");
 const { requireAdmin } = require("../middleware/authorization");
 const { logAudit } = require("../services/auditLogger");
 
 const router = express.Router();
+
+async function notifyStudentsOfEnrollment(students, classRecord) {
+  const recipients = [...new Set(students.map((student) => student?.user).filter(Boolean).map(String))];
+  if (!recipients.length) return;
+  try {
+    await Notification.insertMany(recipients.map((recipient) => ({
+      recipient,
+      type: "class_assigned",
+      title: "You were added to a class",
+      message: `You have been enrolled in ${classRecord.name} · Section ${classRecord.section} (Grade ${classRecord.gradeLevel}).`,
+      link: "/student",
+    })));
+  } catch (error) {
+    // Keep the enrollment successful even if creating a notification fails.
+    console.error("Failed to notify students about class enrollment:", error.message);
+  }
+}
+
+async function notifyStudentIdsOfEnrollment(studentIds, classRecord) {
+  try {
+    const students = await Student.find({ _id: { $in: studentIds } }).select("user").lean();
+    await notifyStudentsOfEnrollment(students, classRecord);
+  } catch (error) {
+    // Notification lookup failures must not roll back a saved enrollment.
+    console.error("Failed to look up enrolled student accounts:", error.message);
+  }
+}
+
+async function syncStudentClassDetails(studentIds, classRecord) {
+  try {
+    await Student.updateMany(
+      { _id: { $in: studentIds } },
+      { $set: { gradeLevel: classRecord.gradeLevel, section: classRecord.section, schoolYear: classRecord.schoolYear } }
+    );
+  } catch (error) {
+    // Enrollment remains valid if the profile metadata update needs to be retried.
+    console.error("Failed to sync student class details:", error.message);
+  }
+}
 
 // GET all students
 router.get("/", async (req, res) => {
@@ -357,6 +397,8 @@ router.post(
       if (idsToAdd.length > 0) {
         classData.students.push(...idsToAdd);
         await classData.save();
+        await syncStudentClassDetails(idsToAdd, classData);
+        await notifyStudentIdsOfEnrollment(idsToAdd, classData);
       }
 
       const updatedClass = await Class.findById(classId)
@@ -428,6 +470,8 @@ router.post("/batch/classes/:classId", async (req, res) => {
     if (idsToAdd.length > 0) {
       classData.students.push(...idsToAdd);
       await classData.save();
+      await syncStudentClassDetails(idsToAdd, classData);
+      await notifyStudentIdsOfEnrollment(idsToAdd, classData);
     }
 
     const updatedClass = await Class.findById(classId)
@@ -495,6 +539,8 @@ router.post("/:studentId/classes/:classId", async (req, res) => {
     classData.students.push(student._id);
 
     await classData.save();
+    await syncStudentClassDetails([student._id], classData);
+    await notifyStudentsOfEnrollment([student], classData);
 
     const updatedClass = await Class.findById(classId).populate("students");
 
@@ -583,6 +629,8 @@ router.post(
       classData.students.push(student._id);
 
       await classData.save();
+      await syncStudentClassDetails([student._id], classData);
+      await notifyStudentsOfEnrollment([student], classData);
 
       const updatedClass = await Class.findById(classId)
         .populate("teacher")

@@ -5,16 +5,18 @@ const IntegrationSetting = require("../models/IntegrationSetting");
 // before it calls dotenv.config(). Reading process.env at require-time
 // would give undefined credentials.
 let transporter;
+let transporterCredentials = "";
 
 function getTransporter() {
-  if (!transporter) {
+  const user = process.env.CUSTOM_EMAIL_USER?.trim() || process.env.EMAIL_USER;
+  const pass = process.env.CUSTOM_EMAIL_APP_PASSWORD?.trim() || process.env.EMAIL_APP_PASSWORD;
+  const credentials = `${user || ""}\u0000${pass || ""}`;
+  if (!transporter || credentials !== transporterCredentials) {
     transporter = nodemailer.createTransport({
       service: "gmail",
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_APP_PASSWORD,
-      },
+      auth: { user, pass },
     });
+    transporterCredentials = credentials;
   }
 
   return transporter;
@@ -30,8 +32,9 @@ async function sendPasswordResetEmail({ to, name, resetUrl, expiresInMinutes }) 
     throw error;
   }
 
+  const user = process.env.CUSTOM_EMAIL_USER?.trim() || process.env.EMAIL_USER;
   await getTransporter().sendMail({
-    from: `"DNHS-SGMS" <${process.env.EMAIL_USER}>`,
+    from: `"DNHS-SGMS" <${user}>`,
     to,
     subject: "Reset your DNHS-SGMS password",
     text: [

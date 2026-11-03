@@ -10,7 +10,7 @@ dns.setServers([
 
 async function connectDB() {
   try {
-    await mongoose.connect(process.env.MONGODB_URI);
+    await mongoose.connect(process.env.CUSTOM_DATABASE_URI?.trim() || process.env.MONGODB_URI);
 
     const gradebookIndexes = await Gradebook.collection.indexes();
     if (gradebookIndexes.some((index) => index.name === "class_1_academicPeriod_1")) {

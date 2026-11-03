@@ -43,7 +43,8 @@ async function getIntegrationFlags() {
 }
 
 async function verifyRecaptcha(captchaToken, remoteIp) {
-  if (!process.env.RECAPTCHA_SECRET_KEY) {
+  const recaptchaSecret = process.env.CUSTOM_RECAPTCHA_SECRET_KEY?.trim() || process.env.RECAPTCHA_SECRET_KEY;
+  if (!recaptchaSecret) {
     throw new Error("RECAPTCHA_NOT_CONFIGURED");
   }
 
@@ -52,7 +53,7 @@ async function verifyRecaptcha(captchaToken, remoteIp) {
   }
 
   const params = new URLSearchParams({
-    secret: process.env.RECAPTCHA_SECRET_KEY,
+    secret: recaptchaSecret,
     response: captchaToken,
   });
 
@@ -198,7 +199,7 @@ router.post("/google", async (req, res) => {
       });
     }
 
-    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientId = process.env.CUSTOM_GOOGLE_CLIENT_ID?.trim() || process.env.GOOGLE_CLIENT_ID;
 
     if (!clientId) {
       return res.status(503).json({

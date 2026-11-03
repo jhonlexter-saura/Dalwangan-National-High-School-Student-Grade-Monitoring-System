@@ -4,6 +4,7 @@ const mongoose = require("mongoose");
 const SubjectAssignment = require("../models/SubjectAssignment");
 const Class = require("../models/Class");
 const Teacher = require("../models/Teacher");
+const Notification = require("../models/Notification");
 const { requireAdmin, requireAuthenticatedUser } = require("../middleware/authorization");
 const { logAudit } = require("../services/auditLogger");
 
@@ -22,6 +23,22 @@ function populateAssignment(query) {
     .populate({ path: "class", populate: { path: "students" } })
     .populate("teacher", "name email user")
     .sort({ createdAt: -1 });
+}
+
+async function notifyTeacherOfAssignment({ teacher, classRecord, subject, assignmentId }) {
+  if (!teacher?.user) return;
+  try {
+    await Notification.create({
+      recipient: teacher.user,
+      type: "subject_assigned",
+      title: "New subject assignment",
+      message: `You have been assigned to teach ${subject} for ${classRecord.name} · Section ${classRecord.section} (Grade ${classRecord.gradeLevel}).`,
+      link: `/teacher/classes/${classRecord._id}`,
+    });
+  } catch (error) {
+    // Assignment changes should succeed even if notification delivery fails.
+    console.error(`Failed to notify teacher about assignment ${assignmentId}:`, error.message);
+  }
 }
 
 router.get("/", requireAdmin, async (req, res) => {
@@ -90,6 +107,13 @@ router.post("/", requireAdmin, async (req, res) => {
     });
     const populated = await populateAssignment(SubjectAssignment.findById(assignment._id));
 
+    await notifyTeacherOfAssignment({
+      teacher,
+      classRecord,
+      subject: assignment.subject,
+      assignmentId: assignment._id,
+    });
+
     logAudit({
       req,
       action: "SUBJECT_ASSIGNED",
@@ -122,14 +146,17 @@ router.patch("/:id", requireAdmin, async (req, res) => {
     if (!assignment) return res.status(404).json({ error: "Subject assignment not found" });
 
     const { subject, teacherUserId, gradingSystem, active } = req.body || {};
+    let assignedTeacher = null;
+    const teacherChanged = teacherUserId !== undefined;
+    const previousTeacherId = String(assignment.teacher);
     if (subject !== undefined) {
       if (!subject.trim()) return res.status(400).json({ error: "Subject is required" });
       assignment.subject = subject.trim();
     }
     if (teacherUserId !== undefined) {
-      const teacher = await Teacher.findOne({ user: teacherUserId });
-      if (!teacher) return res.status(404).json({ error: "Teacher profile not found" });
-      assignment.teacher = teacher._id;
+      assignedTeacher = await Teacher.findOne({ user: teacherUserId });
+      if (!assignedTeacher) return res.status(404).json({ error: "Teacher profile not found" });
+      assignment.teacher = assignedTeacher._id;
     }
     if (gradingSystem !== undefined) {
       const normalized = normalizeGradingSystem(gradingSystem);
@@ -139,6 +166,18 @@ router.patch("/:id", requireAdmin, async (req, res) => {
     if (active !== undefined) assignment.active = Boolean(active);
     await assignment.save();
     const populated = await populateAssignment(SubjectAssignment.findById(assignment._id));
+
+    if (teacherChanged && String(assignment.teacher) !== previousTeacherId && assignment.active) {
+      const classRecord = await Class.findById(assignment.class);
+      if (classRecord) {
+        await notifyTeacherOfAssignment({
+          teacher: assignedTeacher,
+          classRecord,
+          subject: assignment.subject,
+          assignmentId: assignment._id,
+        });
+      }
+    }
 
     logAudit({
       req,

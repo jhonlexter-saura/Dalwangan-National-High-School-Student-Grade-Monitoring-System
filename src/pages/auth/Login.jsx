@@ -18,7 +18,7 @@ function Login() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const captchaSiteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
+  const [captchaSiteKey, setCaptchaSiteKey] = useState(import.meta.env.VITE_RECAPTCHA_SITE_KEY || "");
 
   const [integrations, setIntegrations] = useState({
     googleSignIn: true,
@@ -35,6 +35,9 @@ function Login() {
             googleSignIn: result.settings.googleSignIn !== false,
             recaptcha: result.settings.recaptcha !== false,
           });
+          if (result.settings.recaptchaSiteKey) {
+            setCaptchaSiteKey(result.settings.recaptchaSiteKey);
+          }
         }
       })
       .catch((error) => {
