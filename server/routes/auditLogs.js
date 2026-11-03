@@ -167,6 +167,10 @@ router.get("/export", requireAdmin, async (req, res) => {
 
     const logs = await AuditLog.find(query).sort({ createdAt: -1 }).limit(10000).lean();
 
+    if (req.query.format === "json") {
+      return res.json({ logs, exportedAt: new Date().toISOString() });
+    }
+
     const headers = [
       "Timestamp",
       "Actor Name",

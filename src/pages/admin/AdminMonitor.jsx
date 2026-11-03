@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Activity, CalendarDays, ChevronLeft, ChevronRight, CircleAlert, Download, FileSearch, RefreshCw, Search, Settings2, ShieldCheck, X } from "lucide-react";
-import { exportAuditLogs, getAuditLogDetail, getAuditLogs } from "../../services/schoolDataService";
+import { Activity, CalendarDays, CircleAlert, Download, FileSearch, FileSpreadsheet, FileText, RefreshCw, Search, Settings2, ShieldCheck, X } from "lucide-react";
+import { exportAuditLogs, getAuditLogDetail, getAuditLogExportData, getAuditLogs } from "../../services/schoolDataService";
+import { downloadAdminAuditPdf, downloadAdminAuditXlsx } from "../../utils/adminAuditExports";
 
 const INITIAL_FILTERS = { search: "", category: "all", role: "all", timeframe: "all", startDate: "", endDate: "" };
 const CATEGORY_LABELS = { grades: "Grades", classes: "Classes", activities: "Activities", students: "Students", accounts: "Accounts", calendar: "Calendar", system: "System" };
@@ -92,6 +93,7 @@ export default function AdminMonitor() {
   const [error, setError] = useState("");
   const [selectedLog, setSelectedLog] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState("");
   const requestSequence = useRef(0);
 
   const loadLogs = useCallback(async () => {
@@ -134,11 +136,20 @@ export default function AdminMonitor() {
     finally { setDetailLoading(false); }
   };
 
-  const exportLogs = async () => {
+  const exportLogs = async (format) => {
     try {
-      const blob = await exportAuditLogs(query);
-      downloadCsv(blob);
+      setExportingFormat(format);
+      setError("");
+      if (format === "csv") {
+        const blob = await exportAuditLogs(query);
+        downloadCsv(blob);
+      } else {
+        const { logs } = await getAuditLogExportData(query);
+        if (format === "xlsx") downloadAdminAuditXlsx({ logs });
+        else downloadAdminAuditPdf({ logs, filters: query });
+      }
     } catch (err) { setError(err.message || "Unable to export audit records."); }
+    finally { setExportingFormat(""); }
   };
 
   const resetFilters = () => {
@@ -164,9 +175,11 @@ export default function AdminMonitor() {
           <h1 className="text-2xl font-bold text-gray-900">Activity monitor</h1>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-gray-600">Review changes made across grades, classes, accounts, and school settings. Read-only activity is excluded.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button onClick={loadLogs} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"><RefreshCw size={16} /> Refresh</button>
-          <button onClick={exportLogs} disabled={!data.logs?.length} className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-3 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"><Download size={16} /> Export CSV</button>
+          <button onClick={() => exportLogs("pdf")} disabled={!data.logs?.length || Boolean(exportingFormat)} className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-3 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"><FileText size={16} /> {exportingFormat === "pdf" ? "Preparing PDF…" : "Export PDF"}</button>
+          <button onClick={() => exportLogs("xlsx")} disabled={!data.logs?.length || Boolean(exportingFormat)} className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"><FileSpreadsheet size={16} /> {exportingFormat === "xlsx" ? "Preparing Excel…" : "Export Excel"}</button>
+          <button onClick={() => exportLogs("csv")} disabled={!data.logs?.length || Boolean(exportingFormat)} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"><Download size={16} /> {exportingFormat === "csv" ? "Preparing CSV…" : "Export CSV"}</button>
         </div>
       </header>
 

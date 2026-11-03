@@ -40,7 +40,7 @@ export default function StudentGrades() {
   const [selectedSchoolYear, setSelectedSchoolYear] = useState("");
   const [selectedTerm, setSelectedTerm] = useState("");
   const [expandedSubject, setExpandedSubject] = useState("");
-  const [exporting, setExporting] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -97,15 +97,16 @@ export default function StudentGrades() {
       return { ...entry, selectedPeriod };
     });
 
-  async function handleExport() {
+  async function handleExport(format) {
     try {
-      setExporting(true);
-      await downloadStudentGradePdf({ rows, studentName: user?.name, schoolYear: selectedSchoolYear, term: selectedTerm });
+      setExportingFormat(format);
+      const exportData = { rows, studentName: user?.name, schoolYear: selectedSchoolYear, term: selectedTerm };
+      downloadStudentGradePdf(exportData);
       showToast("Your report card PDF has been downloaded.", "success");
     } catch (error) {
       showToast(error.message || "Unable to export the report card.", "error");
     } finally {
-      setExporting(false);
+      setExportingFormat("");
     }
   }
 
@@ -134,7 +135,7 @@ export default function StudentGrades() {
             </select>
           </label>
         </div>
-        <button type="button" onClick={handleExport} disabled={exporting || !rows.length} className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-800 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 sm:ml-auto sm:w-auto"><Download size={16} /> {exporting ? "Preparing PDF…" : "Download Report Card PDF"}</button>
+        <button type="button" onClick={() => handleExport("pdf")} disabled={Boolean(exportingFormat) || !rows.length} className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-800 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 sm:ml-auto sm:w-auto"><Download size={16} /> {exportingFormat === "pdf" ? "Preparing PDF…" : "Download Report Card PDF"}</button>
       </section>}
 
       {gradeData.length === 0 && !assignmentFilter && <div className="rounded-2xl border border-dashed bg-white p-12 text-center">

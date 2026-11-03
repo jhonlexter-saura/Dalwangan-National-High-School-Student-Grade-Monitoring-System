@@ -493,6 +493,20 @@ export async function exportAuditLogs(params = {}) {
   return response.blob();
 }
 
+export async function getAuditLogExportData(params = {}) {
+  const query = new URLSearchParams();
+  Object.entries({ ...params, format: "json" }).forEach(([key, value]) => {
+    if (value !== undefined && value !== "" && value !== null) query.set(key, String(value));
+  });
+  const token = localStorage.getItem("dnhs_token");
+  const response = await fetch(`${API_URL}/audit-logs/export?${query.toString()}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "Unable to export audit records.");
+  return data;
+}
+
 export function getAuditLogsExportUrl(params = {}) {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
