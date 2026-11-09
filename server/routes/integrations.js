@@ -31,7 +31,8 @@ async function readSettings() {
 }
 
 function effectiveValue(customKey, defaultKey) {
-  return process.env[customKey]?.trim() || process.env[defaultKey] || "";
+  const val = process.env[customKey]?.trim() || process.env[defaultKey]?.trim() || "";
+  return val.replace(/^["']|["']$/g, "").trim();
 }
 
 function validationError(message) {
@@ -61,17 +62,72 @@ async function validateCustomValues(updates) {
     throw validationError("The custom token secret must be at least 32 bytes long.");
   }
 
-  for (const key of ["CUSTOM_GOOGLE_CLIENT_ID", "CUSTOM_VITE_GOOGLE_CLIENT_ID"]) {
-    const value = updates[key];
-    if (value && !/^[^\s@]+\.apps\.googleusercontent\.com$/i.test(value)) {
-      throw validationError("Enter a valid Google OAuth client ID ending in .apps.googleusercontent.com.");
+  const googleClientId = updates.CUSTOM_GOOGLE_CLIENT_ID || updates.CUSTOM_VITE_GOOGLE_CLIENT_ID;
+  if (googleClientId) {
+    if (!/^[0-9]+-[a-z0-9_]+\.apps\.googleusercontent\.com$/i.test(googleClientId)) {
+      throw validationError("Enter a valid Google OAuth Client ID ending in .apps.googleusercontent.com.");
+    }
+    try {
+      const probeUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(googleClientId)}&response_type=token&redirect_uri=http%3A%2F%2Flocalhost&scope=email`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const probeRes = await fetch(probeUrl, {
+        method: "GET",
+        signal: controller.signal,
+        headers: { "User-Agent": "Mozilla/5.0 (DNHS-SGMS Credential Verifier)" },
+      });
+      clearTimeout(timeoutId);
+      const probeText = await probeRes.text();
+      if (
+        probeRes.status === 400 ||
+        probeText.includes("invalid_client") ||
+        probeText.includes("The OAuth client was not found") ||
+        probeText.includes("deleted_client")
+      ) {
+        throw validationError("Google returned an invalid reply: OAuth Client ID was not recognized by Google. Verify that the client ID is correct and active in Google Cloud Console.");
+      }
+    } catch (probeError) {
+      if (probeError.statusCode === 400) throw probeError;
+      console.warn("Google Client ID verification network probe note:", probeError.message);
     }
   }
 
-  for (const key of ["CUSTOM_RECAPTCHA_SECRET_KEY", "CUSTOM_VITE_RECAPTCHA_SITE_KEY"]) {
-    const value = updates[key];
-    if (value && value.length < 20) {
-      throw validationError("The reCAPTCHA key looks too short. Check the key and try again.");
+  if (updates.CUSTOM_RECAPTCHA_SECRET_KEY) {
+    const recaptchaSecret = updates.CUSTOM_RECAPTCHA_SECRET_KEY.trim();
+    if (recaptchaSecret.length < 20) {
+      throw validationError("The reCAPTCHA secret key looks too short. Check the key and try again.");
+    }
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const params = new URLSearchParams({
+        secret: recaptchaSecret,
+        response: "dnhs_probe_token",
+      });
+      const googleRes = await fetch("https://www.google.com/recaptcha/api/siteverify", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: params,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (googleRes.ok) {
+        const result = await googleRes.json();
+        const errorCodes = result["error-codes"] || [];
+        if (errorCodes.includes("invalid-input-secret")) {
+          throw validationError("Google reCAPTCHA rejected this Secret Key (invalid-input-secret). Verify your private secret key in Google reCAPTCHA admin console.");
+        }
+      }
+    } catch (recaptchaError) {
+      if (recaptchaError.statusCode === 400) throw recaptchaError;
+      console.warn("reCAPTCHA verification network probe note:", recaptchaError.message);
+    }
+  }
+
+  if (updates.CUSTOM_VITE_RECAPTCHA_SITE_KEY) {
+    const siteKey = updates.CUSTOM_VITE_RECAPTCHA_SITE_KEY.trim();
+    if (siteKey.length < 20) {
+      throw validationError("The reCAPTCHA site key looks too short. Check the key and try again.");
     }
   }
 
@@ -85,8 +141,8 @@ async function validateCustomValues(updates) {
       const transporter = nodemailer.createTransport({ service: "gmail", auth: { user, pass } });
       try {
         await transporter.verify();
-      } catch {
-        throw validationError("The mailer could not sign in with those credentials. Check the Gmail address and app password.");
+      } catch (mailError) {
+        throw validationError(`The Gmail mailer could not sign in (${mailError.message || "Authentication failed"}). Check your Gmail address and 16-character App Password.`);
       }
     }
   }
@@ -205,6 +261,12 @@ router.patch("/", async (req, res) => {
 
     const key = suppliedKeys[0];
     const value = body[key];
+
+    if (key === "emailMailer") {
+      return res.status(400).json({
+        error: "The Email Mailer is permanently active for password recovery and cannot be toggled off.",
+      });
+    }
 
     if (typeof value !== "boolean") {
       return res.status(400).json({

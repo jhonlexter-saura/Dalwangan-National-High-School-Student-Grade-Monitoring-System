@@ -43,7 +43,8 @@ async function getIntegrationFlags() {
 }
 
 async function verifyRecaptcha(captchaToken, remoteIp) {
-  const recaptchaSecret = process.env.CUSTOM_RECAPTCHA_SECRET_KEY?.trim() || process.env.RECAPTCHA_SECRET_KEY;
+  const rawSecret = process.env.CUSTOM_RECAPTCHA_SECRET_KEY?.trim() || process.env.RECAPTCHA_SECRET_KEY;
+  const recaptchaSecret = rawSecret ? rawSecret.replace(/^["']|["']$/g, "").trim() : "";
   if (!recaptchaSecret) {
     throw new Error("RECAPTCHA_NOT_CONFIGURED");
   }
@@ -57,7 +58,7 @@ async function verifyRecaptcha(captchaToken, remoteIp) {
     response: captchaToken,
   });
 
-  if (remoteIp) {
+  if (remoteIp && remoteIp !== "127.0.0.1" && remoteIp !== "::1" && !remoteIp.startsWith("::ffff:127.")) {
     params.set("remoteip", remoteIp);
   }
 
@@ -77,6 +78,9 @@ async function verifyRecaptcha(captchaToken, remoteIp) {
   }
 
   const result = await response.json();
+  if (result.success !== true) {
+    console.warn("reCAPTCHA verification returned false:", result["error-codes"]);
+  }
   return result.success === true;
 }
 

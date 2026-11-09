@@ -40,19 +40,37 @@ async function updateEnvFile(filePath, updates) {
     if (error.code !== "ENOENT") throw error;
   }
 
-  let nextContents = contents;
-  for (const [key, value] of Object.entries(updates)) {
-    const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const assignment = new RegExp(`^\\s*${escapedKey}\\s*=.*$`, "gm");
-    const line = toEnvLine(key, value);
-    if (new RegExp(`^\\s*${escapedKey}\\s*=.*$`, "m").test(nextContents)) {
-      nextContents = nextContents.replace(assignment, line);
+  contents = contents.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const lines = contents.split("\n");
+
+  const pendingUpdates = { ...updates };
+  const updatedLines = [];
+
+  for (const rawLine of lines) {
+    const match = rawLine.match(/^\s*([A-Za-z0-9_]+)\s*=/);
+    if (match) {
+      const key = match[1];
+      if (Object.hasOwn(pendingUpdates, key)) {
+        updatedLines.push(toEnvLine(key, pendingUpdates[key]));
+        delete pendingUpdates[key];
+        continue;
+      }
+    }
+    updatedLines.push(rawLine);
+  }
+
+  for (const [key, value] of Object.entries(pendingUpdates)) {
+    if (updatedLines.length > 0 && updatedLines[updatedLines.length - 1] === "") {
+      updatedLines.splice(updatedLines.length - 1, 0, toEnvLine(key, value));
     } else {
-      nextContents = `${nextContents}${nextContents && !nextContents.endsWith("\n") ? "\n" : ""}${line}\n`;
+      updatedLines.push(toEnvLine(key, value));
     }
   }
 
-  await fs.writeFile(filePath, nextContents, "utf8");
+  let result = updatedLines.join("\n").trim();
+  if (result) result += "\n";
+
+  await fs.writeFile(filePath, result, "utf8");
 }
 
 async function saveCustomConfig(updates) {

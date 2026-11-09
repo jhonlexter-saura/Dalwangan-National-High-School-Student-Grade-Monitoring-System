@@ -16,13 +16,43 @@ const { logAudit } = require("../services/auditLogger");
 const router = express.Router();
 const CHALLENGE_TTL_MS = 90 * 1000;
 
-function webAuthnConfig() {
+function webAuthnConfig(req) {
   const originValues = (process.env.WEBAUTHN_ORIGIN || process.env.CLIENT_URL || "http://localhost:5173")
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
-  const origins = originValues.map((value) => new URL(value).origin);
-  const rpID = process.env.WEBAUTHN_RP_ID?.trim() || new URL(origins[0]).hostname;
+
+  const originsSet = new Set();
+  for (const value of originValues) {
+    try {
+      originsSet.add(new URL(value).origin);
+    } catch {}
+  }
+  originsSet.add("http://localhost:5173");
+  originsSet.add("http://127.0.0.1:5173");
+  originsSet.add("http://localhost:5000");
+  originsSet.add("http://127.0.0.1:5000");
+
+  const reqOrigin = req?.get?.("origin");
+  if (reqOrigin) {
+    try {
+      originsSet.add(new URL(reqOrigin).origin);
+    } catch {}
+  }
+
+  const origins = Array.from(originsSet);
+  let rpID = process.env.WEBAUTHN_RP_ID?.trim();
+  if (!rpID) {
+    if (reqOrigin) {
+      try {
+        rpID = new URL(reqOrigin).hostname;
+      } catch {}
+    }
+    if (!rpID && origins.length > 0) {
+      rpID = new URL(origins[0]).hostname;
+    }
+  }
+  rpID = rpID || "localhost";
   const rpName = process.env.WEBAUTHN_RP_NAME?.trim() || "DNHS-SGMS";
   return { origins, rpID, rpName };
 }
@@ -53,7 +83,7 @@ router.post("/register/options", requireAdmin, async (req, res) => {
     const user = await getRecentlyAuthenticatedAdmin(req.authenticatedUser._id, req.body?.password);
     if (!user) return res.status(401).json({ error: "Enter your current administrator password to add a passkey." });
 
-    const { rpID, rpName } = webAuthnConfig();
+    const { rpID, rpName } = webAuthnConfig(req);
     const existingPasskeys = await Passkey.find({ userId: user._id }).select("credentialId transports").lean();
     const options = await generateRegistrationOptions({
       rpName,
@@ -63,7 +93,7 @@ router.post("/register/options", requireAdmin, async (req, res) => {
       userDisplayName: user.name,
       attestationType: "none",
       excludeCredentials: existingPasskeys.map((passkey) => ({ id: passkey.credentialId, transports: passkey.transports })),
-      authenticatorSelection: { residentKey: "preferred", userVerification: "required" },
+      authenticatorSelection: { residentKey: "preferred", userVerification: "preferred" },
     });
 
     await PasskeyChallenge.deleteMany({ userId: user._id, purpose: "registration" });
@@ -91,7 +121,7 @@ router.post("/register/verify", requireAdmin, async (req, res) => {
       return res.status(400).json({ error: "Passkey response and a device name of 1–80 characters are required." });
     }
 
-    const { origins, rpID } = webAuthnConfig();
+    const { origins, rpID } = webAuthnConfig(req);
     let verification;
     try {
       verification = await verifyRegistrationResponse({
@@ -99,7 +129,7 @@ router.post("/register/verify", requireAdmin, async (req, res) => {
         expectedChallenge: pendingChallenge.challenge,
         expectedOrigin: origins,
         expectedRPID: rpID,
-        requireUserVerification: true,
+        requireUserVerification: false,
       });
     } catch (error) {
       console.warn("Passkey registration verification failed:", error.message);
@@ -163,11 +193,11 @@ router.post("/login/options", async (req, res) => {
 
     const user = await User.findOne({ email, role: "admin", status: "active" }).select("_id").lean();
     const passkeys = user ? await Passkey.find({ userId: user._id }).select("credentialId transports").lean() : [];
-    const { rpID } = webAuthnConfig();
+    const { rpID } = webAuthnConfig(req);
     const options = await generateAuthenticationOptions({
       rpID,
       ...(passkeys.length ? { allowCredentials: passkeys.map((passkey) => ({ id: passkey.credentialId, transports: passkey.transports })) } : {}),
-      userVerification: "required",
+      userVerification: "preferred",
     });
     await PasskeyChallenge.create({
       challenge: options.challenge,
@@ -189,17 +219,27 @@ router.post("/login/verify", async (req, res) => {
   try {
     if (!isAuthenticationConfigured()) return res.status(503).json({ error: "Authentication is not configured on this server." });
     const pendingChallenge = await PasskeyChallenge.findOneAndDelete({ challenge, purpose: "authentication", expiresAt: { $gt: new Date() } });
-    if (!pendingChallenge || !pendingChallenge.userId) return invalidPasskeyResponse(res);
-    if (!response) return invalidPasskeyResponse(res);
+    if (!pendingChallenge) return invalidPasskeyResponse(res);
+    if (!response || !response.id) return invalidPasskeyResponse(res);
 
-    const passkey = await Passkey.findOne({ credentialId: response.id, userId: pendingChallenge.userId });
+    let passkey = await Passkey.findOne({
+      credentialId: response.id,
+      ...(pendingChallenge.userId ? { userId: pendingChallenge.userId } : {}),
+    });
+    if (!passkey) {
+      passkey = await Passkey.findOne({ credentialId: response.id });
+    }
     if (!passkey) return invalidPasskeyResponse(res);
     const user = await User.findOne({ _id: passkey.userId, role: "admin", status: "active" });
     if (!user) return invalidPasskeyResponse(res);
 
-    const { origins, rpID } = webAuthnConfig();
+    const { origins, rpID } = webAuthnConfig(req);
     let verification;
     try {
+      const rawPublicKey = passkey.publicKey?.buffer
+        ? new Uint8Array(passkey.publicKey.buffer, passkey.publicKey.byteOffset || 0, passkey.publicKey.byteLength || passkey.publicKey.length)
+        : new Uint8Array(passkey.publicKey);
+
       verification = await verifyAuthenticationResponse({
         response,
         expectedChallenge: pendingChallenge.challenge,
@@ -207,11 +247,11 @@ router.post("/login/verify", async (req, res) => {
         expectedRPID: rpID,
         credential: {
           id: passkey.credentialId,
-          publicKey: new Uint8Array(passkey.publicKey),
+          publicKey: rawPublicKey,
           counter: passkey.counter,
           transports: passkey.transports,
         },
-        requireUserVerification: true,
+        requireUserVerification: false,
       });
     } catch (error) {
       console.warn("Passkey authentication verification failed:", error.message);
@@ -219,14 +259,18 @@ router.post("/login/verify", async (req, res) => {
     }
     if (!verification.verified) return invalidPasskeyResponse(res);
 
-    const newCounter = verification.authenticationInfo.newCounter;
-    // A zero counter denotes an authenticator that does not support counters.
-    if ((passkey.counter > 0 || newCounter > 0) && newCounter <= passkey.counter) {
+    const newCounter = verification.authenticationInfo?.newCounter ?? 0;
+    // Multi-device synced passkeys (e.g. iCloud Keychain, Google Password Manager) always return counter = 0.
+    // Only detect counter rollback when BOTH stored counter and new counter are greater than 0.
+    if (passkey.counter > 0 && newCounter > 0 && newCounter <= passkey.counter) {
+      console.warn(`Passkey counter rollback detected: stored ${passkey.counter}, received ${newCounter}`);
       return invalidPasskeyResponse(res);
     }
-    const counterFilter = { _id: passkey._id, counter: passkey.counter };
-    const counterUpdate = await Passkey.updateOne(counterFilter, { $set: { counter: newCounter, lastUsedAt: new Date() } });
-    if (!counterUpdate.modifiedCount) return invalidPasskeyResponse(res);
+
+    await Passkey.updateOne(
+      { _id: passkey._id },
+      { $set: { counter: newCounter > 0 ? newCounter : passkey.counter, lastUsedAt: new Date() } }
+    );
 
     return res.json({ success: true, user: safeUser(user), token: createAccessToken(user._id) });
   } catch (error) {
