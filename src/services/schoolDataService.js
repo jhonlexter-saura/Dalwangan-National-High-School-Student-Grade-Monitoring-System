@@ -1,4 +1,4 @@
-const API_URL = "http://localhost:5000/api";
+const API_URL = "http://localhost:5000/api/v1";
 
 async function request(endpoint, options = {}) {
   const token = localStorage.getItem("dnhs_token");
@@ -556,5 +556,9 @@ export function getAuditLogsExportUrl(params = {}) {
   const token = localStorage.getItem("dnhs_token");
   if (token) query.set("_token", token);
   const qs = query.toString();
-  return `http://localhost:5000/api/audit-logs/export${qs ? `?${qs}` : ""}`;
+  return `http://localhost:5000/api/v1/audit-logs/export${qs ? `?${qs}` : ""}`;
+}
+
+export function getApiData() {
+  return request("/data");
 }

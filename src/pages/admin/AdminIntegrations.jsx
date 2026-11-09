@@ -73,9 +73,9 @@ function AdminIntegrations() {
   const [savingKey, setSavingKey] = useState("");
   const [exportingFormat, setExportingFormat] = useState("");
   const [error, setError] = useState("");
+  const [customWarning, setCustomWarning] = useState("");
   const [customConfig, setCustomConfig] = useState({});
   const [draft, setDraft] = useState({
-    databaseUri: "",
     tokenSecret: "",
     emailUser: "",
     emailPassword: "",
@@ -104,7 +104,7 @@ function AdminIntegrations() {
   }, []);
 
   async function handleToggle(key) {
-    if (savingKey) return;
+    if (savingKey || key === "emailMailer") return;
 
     const nextValue = !settings[key];
     setSavingKey(key);
@@ -126,12 +126,13 @@ function AdminIntegrations() {
     if (savingKey) return;
     setSavingKey(group);
     setError("");
+    setCustomWarning("");
     try {
       const result = await updateCustomIntegrationConfig(values);
       setCustomConfig(result.customConfig || {});
-      showToast(result.message || "Custom settings saved.", "success", 6500);
+      setCustomWarning("");
+      showToast(result.message || "Custom settings verified and saved.", "success", 6500);
       const draftFieldByEnvKey = {
-        CUSTOM_DATABASE_URI: "databaseUri",
         CUSTOM_AUTH_TOKEN_SECRET: "tokenSecret",
         CUSTOM_EMAIL_USER: "emailUser",
         CUSTOM_EMAIL_APP_PASSWORD: "emailPassword",
@@ -142,7 +143,9 @@ function AdminIntegrations() {
       };
       setDraft((current) => ({ ...current, ...Object.fromEntries(Object.keys(values).map((key) => [draftFieldByEnvKey[key], ""])) }));
     } catch (err) {
-      setError(err.message || "Unable to save custom settings.");
+      const msg = err.message || "Unable to save custom settings.";
+      setError(msg);
+      setCustomWarning(msg);
     } finally {
       setSavingKey("");
     }
@@ -251,12 +254,14 @@ function AdminIntegrations() {
                         </h3>
                         <span
                           className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-                            enabled
+                            key === "emailMailer"
+                              ? "bg-blue-100 text-blue-800"
+                              : enabled
                               ? "bg-green-100 text-green-800"
                               : "bg-slate-100 text-slate-600"
                           }`}
                         >
-                          {available ? "Available" : enabled ? "Enabled" : "Disabled"}
+                          {key === "emailMailer" ? "Always On" : available ? "Available" : enabled ? "Enabled" : "Disabled"}
                         </span>
                       </div>
 
@@ -269,26 +274,43 @@ function AdminIntegrations() {
                     </div>
                   </div>
 
-                  {managementPath ? <Link to={managementPath} className="inline-flex shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-100">Manage passkeys</Link> : <button
-                    type="button"
-                    role="switch"
-                    aria-checked={Boolean(enabled)}
-                    aria-label={`${enabled ? "Disable" : "Enable"} ${title}`}
-                    disabled={loading || Boolean(savingKey)}
-                    onClick={() => handleToggle(key)}
-                    className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                      enabled ? "bg-blue-700" : "bg-slate-300"
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
-                        enabled ? "translate-x-6" : "translate-x-1"
+                  {managementPath ? (
+                    <Link to={managementPath} className="inline-flex shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-100">Manage passkeys</Link>
+                  ) : key === "emailMailer" ? (
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={true}
+                      aria-label="Email Mailer is permanently enabled and unselectable"
+                      disabled={true}
+                      tabIndex={-1}
+                      title="Email Mailer is permanently enabled for password recovery and cannot be toggled."
+                      className="relative inline-flex h-7 w-12 shrink-0 cursor-not-allowed select-none items-center rounded-full bg-blue-700/60 opacity-60 pointer-events-none transition-colors"
+                    >
+                      <span className="inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform translate-x-6" />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={Boolean(enabled)}
+                      aria-label={`${enabled ? "Disable" : "Enable"} ${title}`}
+                      disabled={loading || Boolean(savingKey)}
+                      onClick={() => handleToggle(key)}
+                      className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                        enabled ? "bg-blue-700" : "bg-slate-300"
                       }`}
-                    />
-                    {saving && (
-                      <span className="sr-only">Saving setting</span>
-                    )}
-                  </button>}
+                    >
+                      <span
+                        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                          enabled ? "translate-x-6" : "translate-x-1"
+                        }`}
+                      />
+                      {saving && (
+                        <span className="sr-only">Saving setting</span>
+                      )}
+                    </button>
+                  )}
                 </article>
               );
             })}
@@ -336,14 +358,21 @@ function AdminIntegrations() {
             </p>
           </div>
 
-          <div className="grid gap-4 xl:grid-cols-2">
-            <article className={cardClass}>
-              <div className="flex items-start justify-between gap-3"><div className="flex gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-blue-700"><Database size={20} /></span><div><h3 className="font-semibold text-slate-900">Database connection</h3><p className="mt-1 text-sm text-slate-600">Use a separate MongoDB database for this school system.</p></div></div><ConfigBadge active={Boolean(customConfig.CUSTOM_DATABASE_URI?.configured)} /></div>
-              <label className="mt-4 block text-sm font-medium text-slate-700">Custom MongoDB URI<input type="password" autoComplete="new-password" value={draft.databaseUri} onChange={(e) => setDraft({ ...draft, databaseUri: e.target.value })} placeholder={customConfig.CUSTOM_DATABASE_URI?.configured ? "Saved securely · enter a replacement" : "mongodb+srv://…"} className={inputClass} /></label>
-              <p className="mt-2 text-xs leading-5 text-amber-800">The URI is tested before saving. Restart the server to switch databases; the current admin session may need to sign in again if the new database has different accounts.</p>
-              <ConfigActions busy={savingKey === "database"} locked={Boolean(savingKey)} configured={Boolean(customConfig.CUSTOM_DATABASE_URI?.configured)} onSave={() => saveCustom("database", { CUSTOM_DATABASE_URI: draft.databaseUri })} onReset={() => saveCustom("database", { CUSTOM_DATABASE_URI: "" })} disabled={!draft.databaseUri.trim()} />
-            </article>
+          {customWarning && (
+            <div
+              role="alert"
+              className="flex items-start gap-3 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-800 shadow-sm"
+            >
+              <AlertCircle size={20} className="mt-0.5 shrink-0 text-red-600" />
+              <div className="space-y-1">
+                <p className="font-semibold text-red-900">Credential Verification Failed</p>
+                <p className="text-red-700">{customWarning}</p>
+                <p className="text-xs text-red-600">The provided credentials could not be verified by the service (Google / Mailer) and were NOT saved. Existing settings remain unchanged.</p>
+              </div>
+            </div>
+          )}
 
+          <div className="grid gap-4 xl:grid-cols-2">
             <article className={cardClass}>
               <div className="flex items-start justify-between gap-3"><div className="flex gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-50 text-violet-700"><KeyRound size={20} /></span><div><h3 className="font-semibold text-slate-900">Token signing secret</h3><p className="mt-1 text-sm text-slate-600">Signs login tokens used to protect administrator and user sessions.</p></div></div><ConfigBadge active={Boolean(customConfig.CUSTOM_AUTH_TOKEN_SECRET?.configured)} /></div>
               <label className="mt-4 block text-sm font-medium text-slate-700">Custom secret<input type="password" autoComplete="new-password" value={draft.tokenSecret} onChange={(e) => setDraft({ ...draft, tokenSecret: e.target.value })} placeholder={customConfig.CUSTOM_AUTH_TOKEN_SECRET?.configured ? "Saved securely · enter a replacement" : "Enter at least 32 characters"} className={inputClass} /></label>

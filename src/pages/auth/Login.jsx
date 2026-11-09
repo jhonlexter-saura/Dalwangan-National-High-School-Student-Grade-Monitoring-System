@@ -210,6 +210,7 @@ function Login() {
           <div className="flex justify-center">
             {captchaSiteKey ? (
               <ReCAPTCHA
+                key={captchaSiteKey}
                 ref={captchaRef}
                 sitekey={captchaSiteKey}
                 onChange={setCaptchaToken}

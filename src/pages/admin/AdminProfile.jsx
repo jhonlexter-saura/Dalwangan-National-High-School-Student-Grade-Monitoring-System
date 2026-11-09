@@ -71,7 +71,7 @@ function AdminProfile() {
         throw new Error("No authentication token found. Please log in again.");
       }
 
-      const response = await fetch(`http://localhost:5000/api/users/${userId}`, {
+      const response = await fetch(`http://localhost:5000/api/v1/users/${userId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
