@@ -6,14 +6,16 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Cloud,
   Download,
   GraduationCap,
   Loader2,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
-import { getMyGrades } from "../../services/schoolDataService";
-import { downloadStudentGradePdf } from "../../utils/studentGradePdf";
+import { getGoogleConnectUrl, getGoogleIntegrationStatus, getMyGrades, saveReportToGoogleDrive } from "../../services/schoolDataService";
+import { createStudentGradePdf } from "../../utils/studentGradePdf";
+import { blobToBase64, downloadBlob } from "../../utils/googleFileData";
 
 const CATEGORY_LABELS = {
   written_work: "Written Work",
@@ -41,6 +43,7 @@ export default function StudentGrades() {
   const [selectedTerm, setSelectedTerm] = useState("");
   const [expandedSubject, setExpandedSubject] = useState("");
   const [exportingFormat, setExportingFormat] = useState("");
+  const [googleStatus, setGoogleStatus] = useState({ available: false, connected: false, email: "" });
 
   useEffect(() => {
     let active = true;
@@ -73,6 +76,33 @@ export default function StudentGrades() {
     return () => { active = false; };
   }, [user, showToast]);
 
+  useEffect(() => {
+    const refreshStatus = () => { getGoogleIntegrationStatus().then(setGoogleStatus).catch(() => {}); };
+    refreshStatus();
+    window.addEventListener("pageshow", refreshStatus);
+    window.addEventListener("focus", refreshStatus);
+
+    const callbackUrl = new URL(window.location.href);
+    const connected = callbackUrl.searchParams.get("google_connected");
+    const callbackError = callbackUrl.searchParams.get("google_error");
+    if (connected === "true") {
+      showToast("Google Drive connected successfully.", "success");
+      refreshStatus();
+    } else if (callbackError) {
+      showToast(`Google connection failed: ${callbackError}`, "error");
+    }
+    if (connected || callbackError) {
+      callbackUrl.searchParams.delete("google_connected");
+      callbackUrl.searchParams.delete("google_error");
+      window.history.replaceState({}, "", `${callbackUrl.pathname}${callbackUrl.search}${callbackUrl.hash}`);
+    }
+
+    return () => {
+      window.removeEventListener("pageshow", refreshStatus);
+      window.removeEventListener("focus", refreshStatus);
+    };
+  }, [showToast]);
+
   const visibleGradeData = assignmentFilter
     ? gradeData.filter((entry) => String(entry.subjectAssignment?._id) === assignmentFilter)
     : gradeData;
@@ -101,10 +131,36 @@ export default function StudentGrades() {
     try {
       setExportingFormat(format);
       const exportData = { rows, studentName: user?.name, schoolYear: selectedSchoolYear, term: selectedTerm };
-      downloadStudentGradePdf(exportData);
+      const { doc, fileName } = createStudentGradePdf(exportData);
+      downloadBlob(doc.output("blob"), fileName);
       showToast("Your report card PDF has been downloaded.", "success");
     } catch (error) {
       showToast(error.message || "Unable to export the report card.", "error");
+    } finally {
+      setExportingFormat("");
+    }
+  }
+
+  async function handleGoogleDrive() {
+    try {
+      setExportingFormat("drive");
+      if (!googleStatus.connected) {
+        if (!googleStatus.available) throw new Error("Google Drive is not configured yet. Please contact your administrator.");
+        const { authUrl } = await getGoogleConnectUrl("/student/grades");
+        window.location.assign(authUrl);
+        return;
+      }
+      const { doc, fileName } = createStudentGradePdf({ rows, studentName: user?.name, schoolYear: selectedSchoolYear, term: selectedTerm });
+      const result = await saveReportToGoogleDrive({
+        fileName,
+        mimeType: "application/pdf",
+        fileData: await blobToBase64(doc.output("blob")),
+        reportType: "student_report_card",
+        description: `Report card for ${user?.name || "student"}`,
+      });
+      showToast(result.message || "Report card saved to Google Drive.", "success");
+    } catch (error) {
+      showToast(error.message || "Unable to save the report card to Google Drive.", "error");
     } finally {
       setExportingFormat("");
     }
@@ -135,7 +191,10 @@ export default function StudentGrades() {
             </select>
           </label>
         </div>
-        <button type="button" onClick={() => handleExport("pdf")} disabled={Boolean(exportingFormat) || !rows.length} className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-800 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 sm:ml-auto sm:w-auto"><Download size={16} /> {exportingFormat === "pdf" ? "Preparing PDF…" : "Download Report Card PDF"}</button>
+        <div className="flex w-full flex-col gap-2 sm:ml-auto sm:w-auto sm:flex-row">
+          <button type="button" onClick={() => handleExport("pdf")} disabled={Boolean(exportingFormat) || !rows.length} className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-800 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"><Download size={16} /> {exportingFormat === "pdf" ? "Preparing PDF…" : "Download Report Card PDF"}</button>
+          {googleStatus.available && <button type="button" onClick={handleGoogleDrive} disabled={Boolean(exportingFormat) || !rows.length} className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"><Cloud size={16} /> {exportingFormat === "drive" ? "Saving…" : googleStatus.connected ? "Save PDF to Google Drive" : "Connect Google Drive"}</button>}
+        </div>
       </section>}
 
       {gradeData.length === 0 && !assignmentFilter && <div className="rounded-2xl border border-dashed bg-white p-12 text-center">

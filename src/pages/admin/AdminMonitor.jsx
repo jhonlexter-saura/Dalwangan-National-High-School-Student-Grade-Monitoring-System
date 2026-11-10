@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Activity, CalendarDays, CircleAlert, Download, FileSearch, FileSpreadsheet, FileText, RefreshCw, Search, Settings2, ShieldCheck, X } from "lucide-react";
-import { exportAuditLogs, getAuditLogDetail, getAuditLogExportData, getAuditLogs } from "../../services/schoolDataService";
-import { downloadAdminAuditPdf, downloadAdminAuditXlsx } from "../../utils/adminAuditExports";
+import { Activity, CalendarDays, CircleAlert, Cloud, Download, FileSearch, FileSpreadsheet, FileText, RefreshCw, Search, Settings2, ShieldCheck, X } from "lucide-react";
+import { exportAuditLogs, exportReportToGoogleSheets, getAuditLogDetail, getAuditLogExportData, getAuditLogs, getGoogleIntegrationStatus, saveReportToGoogleDrive } from "../../services/schoolDataService";
+import { adminAuditRowsForSheets, createAdminAuditPdf, createAdminAuditXlsx, downloadAdminAuditPdf, downloadAdminAuditXlsx } from "../../utils/adminAuditExports";
+import { useToast } from "../../context/ToastContext";
+import { blobToBase64 } from "../../utils/googleFileData";
 
 const INITIAL_FILTERS = { search: "", category: "all", role: "all", timeframe: "all", startDate: "", endDate: "" };
 const CATEGORY_LABELS = { grades: "Grades", classes: "Classes", activities: "Activities", students: "Students", accounts: "Accounts", calendar: "Calendar", system: "System" };
@@ -84,6 +86,7 @@ function ActorCell({ actor }) {
 
 export default function AdminMonitor() {
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [filters, setFilters] = useState(INITIAL_FILTERS);
   const [query, setQuery] = useState(INITIAL_FILTERS);
   const [page, setPage] = useState(1);
@@ -94,6 +97,7 @@ export default function AdminMonitor() {
   const [selectedLog, setSelectedLog] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [exportingFormat, setExportingFormat] = useState("");
+  const [googleStatus, setGoogleStatus] = useState({ available: false, connected: false });
   const requestSequence = useRef(0);
 
   const loadLogs = useCallback(async () => {
@@ -110,7 +114,11 @@ export default function AdminMonitor() {
     }
   }, [page, pageSize, query]);
 
-  useEffect(() => { loadLogs(); }, [loadLogs]);
+  useEffect(() => { void Promise.resolve().then(loadLogs); }, [loadLogs]);
+
+  useEffect(() => {
+    getGoogleIntegrationStatus().then(setGoogleStatus).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -152,6 +160,48 @@ export default function AdminMonitor() {
     finally { setExportingFormat(""); }
   };
 
+  const saveToGoogleDrive = async (format) => {
+    try {
+      setExportingFormat(`drive-${format}`);
+      if (!googleStatus.connected) throw new Error("Connect Google Drive in Integration Management before saving exports.");
+      const { logs } = await getAuditLogExportData(query);
+      let blob;
+      let fileName;
+      let mimeType;
+      if (format === "csv") {
+        blob = await exportAuditLogs(query);
+        fileName = `DNHS-SGMS-Audit-Logs-${new Date().toISOString().slice(0, 10)}.csv`;
+        mimeType = "text/csv";
+      } else {
+        const result = format === "xlsx" ? createAdminAuditXlsx({ logs }) : createAdminAuditPdf({ logs, filters: query });
+        ({ blob, fileName } = result);
+        mimeType = format === "xlsx" ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "application/pdf";
+      }
+      const result = await saveReportToGoogleDrive({ fileName, mimeType, fileData: await blobToBase64(blob), reportType: `admin_audit_${format}` });
+      showToast(result.message || "Export saved to Google Drive.", "success");
+    } catch (err) { showToast(err.message || "Unable to save the export to Google Drive.", "error"); }
+    finally { setExportingFormat(""); }
+  };
+
+  const exportToSheets = async () => {
+    try {
+      setExportingFormat("sheets");
+      if (!googleStatus.connected) throw new Error("Connect Google Drive in Integration Management before exporting to Sheets.");
+      const { logs } = await getAuditLogExportData(query);
+      const { headers, rows } = adminAuditRowsForSheets(logs);
+      const result = await exportReportToGoogleSheets({
+        title: `DNHS-SGMS Audit Activity ${new Date().toISOString().slice(0, 10)}`,
+        sheetName: "Audit Activity",
+        headers,
+        rows,
+        reportType: "audit_logs",
+      });
+      showToast(result.message || "Audit activity exported to Google Sheets.", "success");
+      window.open(result.spreadsheetUrl, "_blank", "noopener,noreferrer");
+    } catch (err) { showToast(err.message || "Unable to export to Google Sheets.", "error"); }
+    finally { setExportingFormat(""); }
+  };
+
   const resetFilters = () => {
     setFilters(INITIAL_FILTERS);
     setQuery(INITIAL_FILTERS);
@@ -180,6 +230,12 @@ export default function AdminMonitor() {
           <button onClick={() => exportLogs("pdf")} disabled={!data.logs?.length || Boolean(exportingFormat)} className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-3 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"><FileText size={16} /> {exportingFormat === "pdf" ? "Preparing PDF…" : "Export PDF"}</button>
           <button onClick={() => exportLogs("xlsx")} disabled={!data.logs?.length || Boolean(exportingFormat)} className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"><FileSpreadsheet size={16} /> {exportingFormat === "xlsx" ? "Preparing Excel…" : "Export Excel"}</button>
           <button onClick={() => exportLogs("csv")} disabled={!data.logs?.length || Boolean(exportingFormat)} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"><Download size={16} /> {exportingFormat === "csv" ? "Preparing CSV…" : "Export CSV"}</button>
+          {googleStatus.available && <>
+            <button onClick={() => saveToGoogleDrive("pdf")} disabled={!data.logs?.length || Boolean(exportingFormat)} className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"><Cloud size={16} /> {exportingFormat === "drive-pdf" ? "Saving…" : "Save PDF to Drive"}</button>
+            <button onClick={() => saveToGoogleDrive("xlsx")} disabled={!data.logs?.length || Boolean(exportingFormat)} className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"><Cloud size={16} /> {exportingFormat === "drive-xlsx" ? "Saving…" : "Save Excel to Drive"}</button>
+            <button onClick={() => saveToGoogleDrive("csv")} disabled={!data.logs?.length || Boolean(exportingFormat)} className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"><Cloud size={16} /> {exportingFormat === "drive-csv" ? "Saving…" : "Save CSV to Drive"}</button>
+            <button onClick={exportToSheets} disabled={!data.logs?.length || Boolean(exportingFormat)} className="inline-flex items-center gap-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-sm font-medium text-green-900 hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"><FileSpreadsheet size={16} /> {exportingFormat === "sheets" ? "Exporting…" : "Export to Sheets"}</button>
+          </>}
         </div>
       </header>
 

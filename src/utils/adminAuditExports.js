@@ -6,10 +6,6 @@ function clean(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
 }
 
-function safeFilePart(value) {
-  return clean(value).replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "audit-logs";
-}
-
 function actorName(log) {
   return clean(log.actor?.name) || "System";
 }
@@ -46,7 +42,7 @@ function decoratePdfPages(doc, description) {
   }
 }
 
-export function downloadAdminAuditPdf({ logs, filters = {} }) {
+export function createAdminAuditPdf({ logs, filters = {} }) {
   if (!logs?.length) throw new Error("There are no audit records to export for these filters.");
   const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -94,10 +90,20 @@ export function downloadAdminAuditPdf({ logs, filters = {} }) {
   });
 
   decoratePdfPages(doc, description);
-  doc.save(`DNHS-SGMS-Audit-Logs-${filenameDate()}.pdf`);
+  return { blob: doc.output("blob"), fileName: `DNHS-SGMS-Audit-Logs-${filenameDate()}.pdf` };
 }
 
-export function downloadAdminAuditXlsx({ logs }) {
+export function downloadAdminAuditPdf(options) {
+  const { blob, fileName } = createAdminAuditPdf(options);
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export function createAdminAuditXlsx({ logs }) {
   if (!logs?.length) throw new Error("There are no audit records to export for these filters.");
   const rows = logs.map((log) => ({
     "Date and time": log.createdAt ? new Date(log.createdAt).toISOString() : "",
@@ -116,5 +122,33 @@ export function downloadAdminAuditXlsx({ logs }) {
   const sheet = XLSX.utils.json_to_sheet(rows);
   sheet["!cols"] = [{ wch: 24 }, { wch: 26 }, { wch: 34 }, { wch: 18 }, { wch: 34 }, { wch: 18 }, { wch: 32 }, { wch: 22 }, { wch: 64 }, { wch: 18 }, { wch: 14 }];
   XLSX.utils.book_append_sheet(workbook, sheet, "Audit Activity");
-  XLSX.writeFile(workbook, `DNHS-SGMS-Audit-Logs-${filenameDate()}.xlsx`);
+  return {
+    blob: new Blob([XLSX.write(workbook, { bookType: "xlsx", type: "array" })], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+    fileName: `DNHS-SGMS-Audit-Logs-${filenameDate()}.xlsx`,
+    rows,
+  };
+}
+
+export function downloadAdminAuditXlsx(options) {
+  const { blob, fileName } = createAdminAuditXlsx(options);
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export function adminAuditRowsForSheets(logs) {
+  if (!logs?.length) throw new Error("There are no audit records to export for these filters.");
+  return {
+    headers: ["Date and time", "Actor", "Actor email", "Actor role", "Action", "Category", "Target", "Target type", "Description", "IP address", "Status"],
+    rows: logs.map((log) => [
+      log.createdAt ? new Date(log.createdAt).toISOString() : "",
+      actorName(log), clean(log.actor?.email), clean(log.actor?.role || "system"),
+      clean(log.action), clean(log.category), clean(log.target?.name),
+      clean(log.target?.entityType), clean(log.description), clean(log.ipAddress),
+      clean(log.status || "success"),
+    ]),
+  };
 }

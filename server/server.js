@@ -19,6 +19,8 @@ const subjectAssignmentRoutes = require("./routes/subjectAssignments");
 const integrationRoutes = require("./routes/integrations");
 const auditLogRoutes = require("./routes/auditLogs");
 const passkeyRoutes = require("./routes/passkeys");
+const googleIntegrationRoutes = require("./routes/googleIntegration");
+const googleExportRoutes = require("./routes/googleExports");
 
 dotenv.config({ path: path.resolve(__dirname, ".env") });
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
@@ -31,7 +33,7 @@ dns.setServers([
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "12mb" }));
 
 const apiV1 = express.Router();
 
@@ -54,13 +56,17 @@ apiV1.get("/data", (req, res) => {
       subjectAssignments: "/api/v1/subject-assignments",
       users: "/api/v1/users",
       auditLogs: "/api/v1/audit-logs",
+      googleIntegrations: "/api/v1/integrations/google",
+      googleExports: "/api/v1/exports/google",
     },
   });
 });
 
 apiV1.use("/auth/passkeys", passkeyRoutes);
 apiV1.use("/auth", authRoutes);
+apiV1.use("/integrations/google", googleIntegrationRoutes);
 apiV1.use("/integrations", integrationRoutes);
+apiV1.use("/exports/google", googleExportRoutes);
 
 apiV1.use("/classes", classRoutes);
 apiV1.use("/students", studentRoutes);

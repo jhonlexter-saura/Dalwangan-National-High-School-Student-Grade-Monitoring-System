@@ -562,3 +562,47 @@ export function getAuditLogsExportUrl(params = {}) {
 export function getApiData() {
   return request("/data");
 }
+
+// -----------------------------
+// Google Drive & Sheets Integration
+// -----------------------------
+
+export function getGoogleIntegrationStatus() {
+  return request("/integrations/google/status", { cache: "no-store" });
+}
+
+export function getGoogleConnectUrl(returnTo = "") {
+  return request(`/integrations/google/connect${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ""}`);
+}
+
+export function disconnectGoogle() {
+  return request("/integrations/google/disconnect", {
+    method: "POST",
+  });
+}
+
+export function saveReportToGoogleDrive({ fileName, mimeType, fileData, reportType, description }) {
+  return request("/exports/google/drive", {
+    method: "POST",
+    body: JSON.stringify({
+      fileName,
+      mimeType,
+      fileData,
+      reportType,
+      description,
+    }),
+  });
+}
+
+export function exportReportToGoogleSheets({ title, sheetName, headers, rows, reportType }) {
+  return request("/exports/google/sheets", {
+    method: "POST",
+    body: JSON.stringify({
+      title,
+      sheetName,
+      headers,
+      rows,
+      reportType,
+    }),
+  });
+}

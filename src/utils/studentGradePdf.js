@@ -104,12 +104,11 @@ function buildActivityRows(rows) {
   });
 }
 
-export function downloadStudentGradePdf({ rows, studentName, schoolYear, term }) {
+export function createStudentGradePdf({ rows, studentName, schoolYear, term }) {
   if (!rows.length) throw new Error("There are no grades to export for this selection.");
 
   const metadata = getMetadata({ studentName, schoolYear, term });
   const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
-  const pageWidth = doc.internal.pageSize.getWidth();
   drawPageHeader(doc, metadata);
 
   doc.setFont("helvetica", "bold");
@@ -166,5 +165,13 @@ export function downloadStudentGradePdf({ rows, studentName, schoolYear, term })
   });
 
   addPageFooter(doc, metadata.generated);
-  doc.save(`${safeFilePart(metadata.studentName)}-${safeFilePart(term && term !== "all" ? term : schoolYear)}-report-card.pdf`);
+  return {
+    doc,
+    fileName: `${safeFilePart(metadata.studentName)}-${safeFilePart(term && term !== "all" ? term : schoolYear)}-report-card.pdf`,
+  };
+}
+
+export function downloadStudentGradePdf(options) {
+  const { doc, fileName } = createStudentGradePdf(options);
+  doc.save(fileName);
 }

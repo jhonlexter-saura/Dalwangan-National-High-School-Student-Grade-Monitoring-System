@@ -9,9 +9,9 @@ import {
   AlertCircle,
   Database,
   KeyRound,
-  Download,
   FileSpreadsheet,
   FileText,
+  Cloud,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useToast } from "../../context/ToastContext";
@@ -22,6 +22,9 @@ import {
   updateCustomIntegrationConfig,
   exportAuditLogs,
   getAuditLogExportData,
+  getGoogleConnectUrl,
+  getGoogleIntegrationStatus,
+  disconnectGoogle,
 } from "../../services/schoolDataService";
 import { downloadAdminAuditPdf, downloadAdminAuditXlsx } from "../../utils/adminAuditExports";
 
@@ -72,6 +75,8 @@ function AdminIntegrations() {
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState("");
   const [exportingFormat, setExportingFormat] = useState("");
+  const [googleStatus, setGoogleStatus] = useState({ available: false, connected: false, email: "" });
+  const [googleBusy, setGoogleBusy] = useState(false);
   const [error, setError] = useState("");
   const [customWarning, setCustomWarning] = useState("");
   const [customConfig, setCustomConfig] = useState({});
@@ -80,6 +85,8 @@ function AdminIntegrations() {
     emailUser: "",
     emailPassword: "",
     googleClientId: "",
+    googleClientSecret: "",
+    googleTokenKey: "",
     recaptchaSiteKey: "",
     recaptchaSecretKey: "",
   });
@@ -99,9 +106,58 @@ function AdminIntegrations() {
     }
   }
 
+  async function refreshGoogleStatus() {
+    try { setGoogleStatus(await getGoogleIntegrationStatus()); }
+    catch { setGoogleStatus({ available: false, connected: false, email: "" }); }
+  }
+
   useEffect(() => {
-    loadSettings();
-  }, []);
+    void Promise.resolve().then(() => Promise.all([loadSettings(), refreshGoogleStatus()]));
+    const refreshOnReturn = () => { void refreshGoogleStatus(); };
+    window.addEventListener("pageshow", refreshOnReturn);
+    window.addEventListener("focus", refreshOnReturn);
+
+    const callbackUrl = new URL(window.location.href);
+    const connected = callbackUrl.searchParams.get("google_connected");
+    const callbackError = callbackUrl.searchParams.get("google_error");
+    if (connected === "true") {
+      showToast("Google Drive connected successfully.", "success");
+    } else if (callbackError) {
+      showToast(`Google connection failed: ${callbackError}`, "error");
+    }
+    if (connected || callbackError) {
+      callbackUrl.searchParams.delete("google_connected");
+      callbackUrl.searchParams.delete("google_error");
+      window.history.replaceState({}, "", `${callbackUrl.pathname}${callbackUrl.search}${callbackUrl.hash}`);
+    }
+
+    return () => {
+      window.removeEventListener("pageshow", refreshOnReturn);
+      window.removeEventListener("focus", refreshOnReturn);
+    };
+  }, [showToast]);
+
+  async function handleGoogleConnect() {
+    setGoogleBusy(true);
+    try {
+      const { authUrl } = await getGoogleConnectUrl("/admin/integrations");
+      window.location.assign(authUrl);
+    } catch (err) {
+      showToast(err.message || "Unable to start Google Drive connection.", "error");
+      setGoogleBusy(false);
+    }
+  }
+
+  async function handleGoogleDisconnect() {
+    setGoogleBusy(true);
+    try {
+      const result = await disconnectGoogle();
+      setGoogleStatus((current) => ({ ...current, connected: false, email: "", connectedAt: null, lastUsedAt: null }));
+      showToast(result.message || "Google account disconnected.", "success");
+    } catch (err) {
+      showToast(err.message || "Unable to disconnect Google account.", "error");
+    } finally { setGoogleBusy(false); }
+  }
 
   async function handleToggle(key) {
     if (savingKey || key === "emailMailer") return;
@@ -137,6 +193,8 @@ function AdminIntegrations() {
         CUSTOM_EMAIL_USER: "emailUser",
         CUSTOM_EMAIL_APP_PASSWORD: "emailPassword",
         CUSTOM_GOOGLE_CLIENT_ID: "googleClientId",
+        CUSTOM_GOOGLE_CLIENT_SECRET: "googleClientSecret",
+        CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY: "googleTokenKey",
         CUSTOM_VITE_GOOGLE_CLIENT_ID: "googleClientId",
         CUSTOM_RECAPTCHA_SECRET_KEY: "recaptchaSecretKey",
         CUSTOM_VITE_RECAPTCHA_SITE_KEY: "recaptchaSiteKey",
@@ -324,6 +382,23 @@ function AdminIntegrations() {
         </section>
 
         <section className={cardClass}>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-green-50 text-green-700"><Cloud size={20} /></span>
+              <div>
+                <p className="text-sm font-medium text-green-700">Google Drive and Sheets</p>
+                <h2 className="mt-1 text-xl font-bold text-slate-900">Export connection</h2>
+                <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">Connect the administrator Google account used to save Activity Monitor exports and create Google Sheets.</p>
+                <p className="mt-2 text-sm font-medium text-slate-700">{!googleStatus.available ? "Google OAuth is not configured on the server." : googleStatus.connected ? `Connected${googleStatus.email ? ` as ${googleStatus.email}` : ""}` : "Not connected"}</p>
+              </div>
+            </div>
+            {googleStatus.connected
+              ? <button type="button" onClick={handleGoogleDisconnect} disabled={googleBusy} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">{googleBusy ? "Working…" : "Disconnect Google"}</button>
+              : <button type="button" onClick={handleGoogleConnect} disabled={googleBusy || !googleStatus.available} className="rounded-lg bg-green-700 px-4 py-2 text-sm font-semibold text-white hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-50">{googleBusy ? "Connecting…" : "Connect Google Drive"}</button>}
+          </div>
+        </section>
+
+        <section className={cardClass}>
           <div>
             <p className="text-sm font-medium text-blue-700">Reports</p>
             <h2 className="mt-1 text-xl font-bold text-slate-900">Report &amp; Data Export</h2>
@@ -388,10 +463,10 @@ function AdminIntegrations() {
             </article>
 
             <article className={cardClass}>
-              <div className="flex items-start justify-between gap-3"><div className="flex gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-50 text-green-700"><Globe size={20} /></span><div><h3 className="font-semibold text-slate-900">Google Sign-In</h3><p className="mt-1 text-sm text-slate-600">Set the OAuth client used by the sign-in page and server.</p></div></div><ConfigBadge active={Boolean(customConfig.CUSTOM_GOOGLE_CLIENT_ID?.configured || customConfig.CUSTOM_VITE_GOOGLE_CLIENT_ID?.configured)} /></div>
-              <label className="mt-4 block text-sm font-medium text-slate-700">Google OAuth Client ID<input type="text" autoComplete="off" value={draft.googleClientId} onChange={(e) => setDraft({ ...draft, googleClientId: e.target.value })} placeholder={customConfig.CUSTOM_GOOGLE_CLIENT_ID?.configured || customConfig.CUSTOM_VITE_GOOGLE_CLIENT_ID?.configured ? "Saved · enter a replacement" : "…apps.googleusercontent.com"} className={inputClass} /></label>
-              <p className="mt-2 text-xs leading-5 text-slate-500">The public client ID updates on the login screen immediately. Google confirms the client is usable when sign-in is attempted.</p>
-              <ConfigActions busy={savingKey === "google"} locked={Boolean(savingKey)} configured={Boolean(customConfig.CUSTOM_GOOGLE_CLIENT_ID?.configured || customConfig.CUSTOM_VITE_GOOGLE_CLIENT_ID?.configured)} onSave={() => saveCustom("google", { CUSTOM_GOOGLE_CLIENT_ID: draft.googleClientId, CUSTOM_VITE_GOOGLE_CLIENT_ID: draft.googleClientId })} onReset={() => saveCustom("google", { CUSTOM_GOOGLE_CLIENT_ID: "", CUSTOM_VITE_GOOGLE_CLIENT_ID: "" })} disabled={!draft.googleClientId.trim()} />
+              <div className="flex items-start justify-between gap-3"><div className="flex gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-50 text-green-700"><Globe size={20} /></span><div><h3 className="font-semibold text-slate-900">Google OAuth credentials</h3><p className="mt-1 text-sm text-slate-600">Set the OAuth client used for sign-in and Drive exports.</p></div></div><ConfigBadge active={Boolean(customConfig.CUSTOM_GOOGLE_CLIENT_ID?.configured || customConfig.CUSTOM_VITE_GOOGLE_CLIENT_ID?.configured || customConfig.CUSTOM_GOOGLE_CLIENT_SECRET?.configured)} /></div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2"><label className="block text-sm font-medium text-slate-700">Google OAuth Client ID<input type="text" autoComplete="off" value={draft.googleClientId} onChange={(e) => setDraft({ ...draft, googleClientId: e.target.value })} placeholder={customConfig.CUSTOM_GOOGLE_CLIENT_ID?.configured || customConfig.CUSTOM_VITE_GOOGLE_CLIENT_ID?.configured ? "Saved · enter a replacement" : "…apps.googleusercontent.com"} className={inputClass} /></label><label className="block text-sm font-medium text-slate-700">Google OAuth Client Secret<input type="password" autoComplete="new-password" value={draft.googleClientSecret} onChange={(e) => setDraft({ ...draft, googleClientSecret: e.target.value })} placeholder={customConfig.CUSTOM_GOOGLE_CLIENT_SECRET?.configured ? "Saved securely · enter a replacement" : "Server-side client secret"} className={inputClass} /></label><label className="block text-sm font-medium text-slate-700 sm:col-span-2">Google token encryption key<input type="password" autoComplete="new-password" value={draft.googleTokenKey} onChange={(e) => setDraft({ ...draft, googleTokenKey: e.target.value })} placeholder={customConfig.CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY?.configured ? "Saved securely · enter a replacement" : "At least 32 characters · keep this key stable"} className={inputClass} /></label></div>
+              <p className="mt-2 text-xs leading-5 text-slate-500">The client ID is public. The client secret and encryption key stay on the server and are never shown after saving. Keep the encryption key stable so saved Google connections remain usable. Configure the OAuth redirect URL as your server’s /api/v1/integrations/google/callback address.</p>
+              <ConfigActions busy={savingKey === "google"} locked={Boolean(savingKey)} configured={Boolean(customConfig.CUSTOM_GOOGLE_CLIENT_ID?.configured || customConfig.CUSTOM_VITE_GOOGLE_CLIENT_ID?.configured || customConfig.CUSTOM_GOOGLE_CLIENT_SECRET?.configured || customConfig.CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY?.configured)} onSave={() => saveCustom("google", { CUSTOM_GOOGLE_CLIENT_ID: draft.googleClientId, CUSTOM_VITE_GOOGLE_CLIENT_ID: draft.googleClientId, CUSTOM_GOOGLE_CLIENT_SECRET: draft.googleClientSecret, CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY: draft.googleTokenKey })} onReset={() => saveCustom("google", { CUSTOM_GOOGLE_CLIENT_ID: "", CUSTOM_VITE_GOOGLE_CLIENT_ID: "", CUSTOM_GOOGLE_CLIENT_SECRET: "", CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY: "" })} disabled={!draft.googleClientId.trim() || !draft.googleClientSecret.trim() || draft.googleTokenKey.trim().length < 32} />
             </article>
 
             <article className={cardClass}>

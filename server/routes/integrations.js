@@ -4,6 +4,7 @@ const nodemailer = require("nodemailer");
 const IntegrationSetting = require("../models/IntegrationSetting");
 const { requireAdmin } = require("../middleware/authorization");
 const { logAudit } = require("../services/auditLogger");
+const GoogleIntegration = require("../models/GoogleIntegration");
 const {
   CUSTOM_ENV_KEYS,
   getCustomConfigStatus,
@@ -90,6 +91,14 @@ async function validateCustomValues(updates) {
       if (probeError.statusCode === 400) throw probeError;
       console.warn("Google Client ID verification network probe note:", probeError.message);
     }
+  }
+
+  if (updates.CUSTOM_GOOGLE_CLIENT_SECRET && updates.CUSTOM_GOOGLE_CLIENT_SECRET.trim().length < 8) {
+    throw validationError("The Google OAuth Client Secret looks too short.");
+  }
+
+  if (updates.CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY && Buffer.byteLength(updates.CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY.trim()) < 32) {
+    throw validationError("The Google token encryption key must be at least 32 bytes long.");
   }
 
   if (updates.CUSTOM_RECAPTCHA_SECRET_KEY) {
@@ -209,6 +218,16 @@ router.put("/custom-config", async (req, res) => {
 
     if (!Object.keys(updates).length) {
       return res.status(400).json({ error: "No custom settings were provided." });
+    }
+
+    if (Object.hasOwn(updates, "CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY")) {
+      const currentKey = effectiveValue("CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY", "GOOGLE_TOKEN_ENCRYPTION_KEY");
+      if (currentKey && currentKey !== updates.CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY) {
+        const connectedCount = await GoogleIntegration.countDocuments();
+        if (connectedCount) {
+          throw validationError("Disconnect all Google accounts before changing or removing the token encryption key. Existing connections depend on the current key.");
+        }
+      }
     }
 
     await validateCustomValues(updates);
