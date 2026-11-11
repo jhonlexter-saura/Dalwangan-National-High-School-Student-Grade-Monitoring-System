@@ -8,6 +8,16 @@ import { Fingerprint } from "lucide-react";
 
 import { useAuth } from "../../context/AuthContext";
 
+function formatWaitDuration(seconds) {
+  const totalSeconds = Math.max(1, Math.ceil(Number(seconds) || 1));
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainingSeconds = totalSeconds % 60;
+
+  if (minutes && remainingSeconds) return `${minutes} minute${minutes === 1 ? "" : "s"} and ${remainingSeconds} second${remainingSeconds === 1 ? "" : "s"}`;
+  if (minutes) return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  return `${remainingSeconds} second${remainingSeconds === 1 ? "" : "s"}`;
+}
+
 function Login() {
   const { user, login, loginWithGoogle, loginWithPasskey } = useAuth();
   const navigate = useNavigate();
@@ -59,7 +69,10 @@ function Login() {
 
   const finishLogin = (result) => {
     if (!result.success) {
-      setError(result.message || "Sign-in failed.");
+      const waitMessage = result.status === 429 && result.retryAfterSeconds
+        ? ` Please wait ${formatWaitDuration(result.retryAfterSeconds)} before trying again.`
+        : "";
+      setError(`${result.message || "Sign-in failed."}${waitMessage}`);
       return;
     }
 

@@ -15,7 +15,10 @@ async function request(endpoint, options = {}) {
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(data.error || "Something went wrong");
+    const error = new Error(data.error || "Something went wrong");
+    error.status = response.status;
+    error.retryAfterSeconds = Number(data.retryAfterSeconds || response.headers.get("Retry-After")) || undefined;
+    throw error;
   }
 
   return data;

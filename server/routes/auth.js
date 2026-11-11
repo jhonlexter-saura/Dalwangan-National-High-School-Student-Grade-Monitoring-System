@@ -13,11 +13,59 @@ const {
   isAuthenticationConfigured,
 } = require("../middleware/authorization");
 const { sendPasswordResetEmail } = require("../utils/mailer");
+const { logAudit } = require("../services/auditLogger");
+const {
+  limits: authRateLimits,
+  accountFailureGuard,
+  recordFailedAccountLogin,
+  clearAccountFailures,
+  forgotPasswordAccountLimit,
+} = require("../middleware/authRateLimit");
 
 const router = express.Router();
 
 const RESET_TOKEN_TTL_MINUTES = 15;
 const MIN_PASSWORD_LENGTH = 8;
+const auditIdentifierSecret = process.env.CUSTOM_AUTH_TOKEN_SECRET?.trim()
+  || process.env.AUTH_TOKEN_SECRET
+  || crypto.randomBytes(32).toString("hex");
+
+async function logSuccessfulLogin(req, user, method) {
+  await logAudit({
+    req,
+    actor: {
+      user: user._id,
+      name: user.name || "User",
+      email: user.email || "",
+      role: user.role || "system",
+    },
+    action: "USER_LOGIN",
+    category: "system",
+    target: { entityType: "User", entityId: String(user._id), name: user.name || user.email || "User" },
+    description: `${user.role || "User"} signed in using ${method}.`,
+    details: { role: user.role, loginMethod: method },
+  });
+}
+
+async function logFailedLogin(req, { user = null, identifier = "", method, reason }) {
+  const identifierHash = identifier
+    ? crypto.createHmac("sha256", auditIdentifierSecret).update(identifier.trim().toLowerCase()).digest("hex")
+    : "";
+  await logAudit({
+    req,
+    actor: user
+      ? { user: user._id, name: user.name || "User", email: user.email || "", role: user.role || "system" }
+      : { user: null, name: "Unrecognized sign-in", email: "", role: "system" },
+    action: "USER_LOGIN",
+    category: "system",
+    target: user
+      ? { entityType: "User", entityId: String(user._id), name: user.name || user.email || "User" }
+      : { entityType: "AuthenticationAttempt", name: "Unrecognized account" },
+    description: `Failed sign-in${user?.role ? ` for ${user.role}` : ""} using ${method}.`,
+    details: { loginMethod: method, failureReason: reason, ...(identifierHash ? { attemptedIdentifierHash: identifierHash } : {}) },
+    status: "failed",
+  });
+}
 
 // Password recovery is limited to these roles. Admin accounts are excluded.
 const RECOVERY_ROLES = ["teacher", "student"];
@@ -84,7 +132,7 @@ async function verifyRecaptcha(captchaToken, remoteIp) {
   return result.success === true;
 }
 
-router.post("/login", async (req, res) => {
+router.post("/login", authRateLimits.passwordLoginIp, accountFailureGuard, async (req, res) => {
   try {
     if (!isAuthenticationConfigured()) {
       return res.status(503).json({
@@ -117,6 +165,11 @@ router.post("/login", async (req, res) => {
       }
 
       if (!captchaValid) {
+        await logFailedLogin(req, {
+          identifier: typeof req.body?.email === "string" ? req.body.email : "",
+          method: "password",
+          reason: "captcha_failed",
+        });
         return res.status(403).json({
           error: "Please complete the reCAPTCHA challenge again.",
         });
@@ -141,14 +194,18 @@ router.post("/login", async (req, res) => {
     const user = await User.findOne({ email: normalizedEmail });
 
     if (!user) {
+      recordFailedAccountLogin(normalizedEmail);
+      await logFailedLogin(req, { identifier: normalizedEmail, method: "password", reason: "invalid_credentials" });
       return res.status(401).json({
         error: "Invalid email or password",
       });
     }
 
     if (user.status !== "active") {
-      return res.status(403).json({
-        error: "This account is inactive.",
+      recordFailedAccountLogin(normalizedEmail);
+      await logFailedLogin(req, { user, identifier: normalizedEmail, method: "password", reason: "invalid_credentials" });
+      return res.status(401).json({
+        error: "Invalid email or password",
       });
     }
 
@@ -158,10 +215,15 @@ router.post("/login", async (req, res) => {
     );
 
     if (!passwordMatches) {
+      recordFailedAccountLogin(normalizedEmail);
+      await logFailedLogin(req, { user, identifier: normalizedEmail, method: "password", reason: "invalid_credentials" });
       return res.status(401).json({
         error: "Invalid email or password",
       });
     }
+
+    await logSuccessfulLogin(req, user, "password");
+    clearAccountFailures(normalizedEmail);
 
     return res.json({
       success: true,
@@ -188,7 +250,7 @@ function safeUser(user) {
 }
 
 
-router.post("/google", async (req, res) => {
+router.post("/google", authRateLimits.googleLoginIp, async (req, res) => {
   try {
     if (!isAuthenticationConfigured()) {
       return res.status(503).json({
@@ -231,6 +293,7 @@ router.post("/google", async (req, res) => {
       !payload.email ||
       payload.email_verified !== true
     ) {
+      await logFailedLogin(req, { method: "Google", reason: "identity_verification_failed" });
       return res.status(401).json({
         error: "Google account verification failed",
       });
@@ -242,16 +305,20 @@ router.post("/google", async (req, res) => {
     const user = await User.findOne({ email });
 
     if (!user) {
-      return res.status(403).json({
-        error: "No existing DNHS-SGMS account matches this Google email.",
+      await logFailedLogin(req, { identifier: email, method: "Google", reason: "account_not_found" });
+      return res.status(401).json({
+        error: "Google sign-in could not be verified. Please try again.",
       });
     }
 
     if (user.status !== "active") {
-      return res.status(403).json({
-        error: "This account is inactive.",
+      await logFailedLogin(req, { user, identifier: email, method: "Google", reason: "account_inactive" });
+      return res.status(401).json({
+        error: "Google sign-in could not be verified. Please try again.",
       });
     }
+
+    await logSuccessfulLogin(req, user, "Google");
 
     return res.json({
       success: true,
@@ -260,6 +327,7 @@ router.post("/google", async (req, res) => {
     });
   } catch (error) {
     console.error("Google sign-in error:", error.message);
+    await logFailedLogin(req, { method: "Google", reason: "identity_verification_failed" });
 
     return res.status(401).json({
       error: "Google sign-in could not be verified. Please try again.",
@@ -272,7 +340,7 @@ router.post("/google", async (req, res) => {
 // Password recovery
 // -----------------------------
 
-router.post("/forgot-password", async (req, res) => {
+router.post("/forgot-password", authRateLimits.forgotPasswordIp, forgotPasswordAccountLimit, async (req, res) => {
   try {
     const { email } = req.body;
 
@@ -308,6 +376,7 @@ router.post("/forgot-password", async (req, res) => {
       );
 
       const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
+      let resetEmailSent = true;
 
       try {
         await sendPasswordResetEmail({
@@ -317,6 +386,7 @@ router.post("/forgot-password", async (req, res) => {
           expiresInMinutes: RESET_TOKEN_TTL_MINUTES,
         });
       } catch (mailError) {
+        resetEmailSent = false;
         // Email failed: invalidate the token and log the cause.
         // The response stays generic so existence isn't revealed.
         if (mailError.code !== "MAILER_DISABLED") {
@@ -328,6 +398,24 @@ router.post("/forgot-password", async (req, res) => {
           { $unset: { resetPasswordToken: "", resetPasswordExpires: "" } }
         );
       }
+
+      await logAudit({
+        req,
+        actor: {
+          user: user._id,
+          name: user.name || "User",
+          email: user.email || "",
+          role: user.role || "system",
+        },
+        action: "PASSWORD_RESET_REQUESTED",
+        category: "accounts",
+        target: { entityType: "User", entityId: String(user._id), name: user.name || user.email || "User" },
+        description: resetEmailSent
+          ? `Requested password recovery for '${user.name || user.email}'.`
+          : `Password recovery email could not be sent for '${user.name || user.email}'.`,
+        details: { role: user.role, method: "email_recovery" },
+        status: resetEmailSent ? "success" : "failed",
+      });
     }
 
     res.json({
@@ -343,7 +431,7 @@ router.post("/forgot-password", async (req, res) => {
   }
 });
 
-router.post("/reset-password", async (req, res) => {
+router.post("/reset-password", authRateLimits.resetPasswordIp, async (req, res) => {
   try {
     const { token, password } = req.body;
 
@@ -383,6 +471,21 @@ router.post("/reset-password", async (req, res) => {
         $unset: { resetPasswordToken: "", resetPasswordExpires: "" },
       }
     );
+
+    await logAudit({
+      req,
+      actor: {
+        user: user._id,
+        name: user.name || "User",
+        email: user.email || "",
+        role: user.role || "system",
+      },
+      action: "PASSWORD_RESET",
+      category: "accounts",
+      target: { entityType: "User", entityId: String(user._id), name: user.name || user.email || "User" },
+      description: `Reset password for '${user.name || user.email}' through email recovery.`,
+      details: { role: user.role, method: "email_recovery" },
+    });
 
     res.json({
       success: true,

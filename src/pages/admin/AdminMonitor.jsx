@@ -223,7 +223,7 @@ export default function AdminMonitor() {
         <div className="max-w-2xl">
           <div className="mb-2 flex items-center gap-2 text-sm font-medium text-blue-700"><ShieldCheck size={17} /> Administration</div>
           <h1 className="text-2xl font-bold text-gray-900">Activity monitor</h1>
-          <p className="mt-1 max-w-2xl text-sm leading-6 text-gray-600">Review changes made across grades, classes, accounts, and school settings. Read-only activity is excluded.</p>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-gray-600">Review sign-ins and changes made across grades, classes, accounts, and school settings.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button onClick={loadLogs} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"><RefreshCw size={16} /> Refresh</button>

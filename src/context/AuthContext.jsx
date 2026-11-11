@@ -71,6 +71,8 @@ export function AuthProvider({ children }) {
       return {
         success: false,
         message: error.message || "Login failed.",
+        status: error.status,
+        retryAfterSeconds: error.retryAfterSeconds,
       };
     }
   };
@@ -83,6 +85,8 @@ export function AuthProvider({ children }) {
       return {
         success: false,
         message: error.message || "Google sign-in failed.",
+        status: error.status,
+        retryAfterSeconds: error.retryAfterSeconds,
       };
     }
   };
@@ -99,6 +103,8 @@ export function AuthProvider({ children }) {
         message: error.name === "NotAllowedError"
           ? "Passkey sign-in was cancelled or timed out."
           : error.message || "Passkey sign-in failed.",
+        status: error.status,
+        retryAfterSeconds: error.retryAfterSeconds,
       };
     }
   };

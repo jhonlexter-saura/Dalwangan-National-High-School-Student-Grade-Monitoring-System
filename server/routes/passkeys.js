@@ -12,6 +12,12 @@ const Passkey = require("../models/Passkey");
 const PasskeyChallenge = require("../models/PasskeyChallenge");
 const { createAccessToken, isAuthenticationConfigured, requireAdmin } = require("../middleware/authorization");
 const { logAudit } = require("../services/auditLogger");
+const {
+  limits: authRateLimits,
+  accountFailureGuard,
+  recordFailedAccountLogin,
+  clearAccountFailures,
+} = require("../middleware/authRateLimit");
 
 const router = express.Router();
 const CHALLENGE_TTL_MS = 90 * 1000;
@@ -74,7 +80,22 @@ function publicPasskey(passkey) {
   };
 }
 
-function invalidPasskeyResponse(res) {
+async function invalidPasskeyResponse(req, res, user = null, reason = "invalid_credential") {
+  if (user?.email) recordFailedAccountLogin(user.email);
+  await logAudit({
+    req,
+    actor: user
+      ? { user: user._id, name: user.name || "Administrator", email: user.email || "", role: user.role || "admin" }
+      : { user: null, name: "Unrecognized sign-in", email: "", role: "system" },
+    action: "USER_LOGIN",
+    category: "system",
+    target: user
+      ? { entityType: "User", entityId: String(user._id), name: user.name || user.email || "Administrator" }
+      : { entityType: "AuthenticationAttempt", name: "Unrecognized account" },
+    description: "Failed administrator sign-in using passkey.",
+    details: { loginMethod: "passkey", failureReason: reason },
+    status: "failed",
+  });
   return res.status(401).json({ error: "Passkey could not be verified. Try again or sign in with your password." });
 }
 
@@ -185,7 +206,7 @@ router.delete("/:id", requireAdmin, async (req, res) => {
   }
 });
 
-router.post("/login/options", async (req, res) => {
+router.post("/login/options", authRateLimits.passkeyOptionsIp, accountFailureGuard, async (req, res) => {
   try {
     if (!isAuthenticationConfigured()) return res.status(503).json({ error: "Authentication is not configured on this server." });
     const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
@@ -212,15 +233,16 @@ router.post("/login/options", async (req, res) => {
   }
 });
 
-router.post("/login/verify", async (req, res) => {
+router.post("/login/verify", authRateLimits.passkeyVerifyIp, async (req, res) => {
   const { response, challenge } = req.body || {};
   if (typeof challenge !== "string") return res.status(400).json({ error: "Passkey challenge is required." });
 
   try {
     if (!isAuthenticationConfigured()) return res.status(503).json({ error: "Authentication is not configured on this server." });
     const pendingChallenge = await PasskeyChallenge.findOneAndDelete({ challenge, purpose: "authentication", expiresAt: { $gt: new Date() } });
-    if (!pendingChallenge) return invalidPasskeyResponse(res);
-    if (!response || !response.id) return invalidPasskeyResponse(res);
+    if (!pendingChallenge) return invalidPasskeyResponse(req, res, null, "invalid_or_expired_challenge");
+    const challengeUser = pendingChallenge.userId ? await User.findById(pendingChallenge.userId).select("name email role") : null;
+    if (!response || !response.id) return invalidPasskeyResponse(req, res, challengeUser, "invalid_credential");
 
     let passkey = await Passkey.findOne({
       credentialId: response.id,
@@ -229,9 +251,9 @@ router.post("/login/verify", async (req, res) => {
     if (!passkey) {
       passkey = await Passkey.findOne({ credentialId: response.id });
     }
-    if (!passkey) return invalidPasskeyResponse(res);
+    if (!passkey) return invalidPasskeyResponse(req, res, challengeUser, "invalid_credential");
     const user = await User.findOne({ _id: passkey.userId, role: "admin", status: "active" });
-    if (!user) return invalidPasskeyResponse(res);
+    if (!user) return invalidPasskeyResponse(req, res, challengeUser, "account_unavailable");
 
     const { origins, rpID } = webAuthnConfig(req);
     let verification;
@@ -255,22 +277,38 @@ router.post("/login/verify", async (req, res) => {
       });
     } catch (error) {
       console.warn("Passkey authentication verification failed:", error.message);
-      return invalidPasskeyResponse(res);
+      return invalidPasskeyResponse(req, res, user, "invalid_credential");
     }
-    if (!verification.verified) return invalidPasskeyResponse(res);
+    if (!verification.verified) return invalidPasskeyResponse(req, res, user, "invalid_credential");
 
     const newCounter = verification.authenticationInfo?.newCounter ?? 0;
     // Multi-device synced passkeys (e.g. iCloud Keychain, Google Password Manager) always return counter = 0.
     // Only detect counter rollback when BOTH stored counter and new counter are greater than 0.
     if (passkey.counter > 0 && newCounter > 0 && newCounter <= passkey.counter) {
       console.warn(`Passkey counter rollback detected: stored ${passkey.counter}, received ${newCounter}`);
-      return invalidPasskeyResponse(res);
+      return invalidPasskeyResponse(req, res, user, "counter_rollback");
     }
 
     await Passkey.updateOne(
       { _id: passkey._id },
       { $set: { counter: newCounter > 0 ? newCounter : passkey.counter, lastUsedAt: new Date() } }
     );
+
+    await logAudit({
+      req,
+      actor: {
+        user: user._id,
+        name: user.name || "Administrator",
+        email: user.email || "",
+        role: user.role,
+      },
+      action: "USER_LOGIN",
+      category: "system",
+      target: { entityType: "User", entityId: String(user._id), name: user.name || user.email || "Administrator" },
+      description: "Administrator signed in using a passkey.",
+      details: { role: user.role, loginMethod: "passkey" },
+    });
+    clearAccountFailures(user.email);
 
     return res.json({ success: true, user: safeUser(user), token: createAccessToken(user._id) });
   } catch (error) {
