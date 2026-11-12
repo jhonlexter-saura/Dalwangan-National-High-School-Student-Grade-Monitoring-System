@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const dns = require("dns");
 const Gradebook = require("../models/Gradebook");
 const GradebookLock = require("../models/GradebookLock");
+const AcademicPeriod = require("../models/AcademicPeriod");
 
 // Use public DNS servers for MongoDB Atlas SRV resolution
 dns.setServers([
@@ -22,6 +23,7 @@ async function connectDB() {
     }
     await Gradebook.syncIndexes();
     await GradebookLock.init();
+    await AcademicPeriod.init();
 
     console.log("MongoDB connected successfully");
   } catch (error) {

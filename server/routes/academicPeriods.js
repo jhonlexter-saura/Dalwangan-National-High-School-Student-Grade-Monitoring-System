@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 
 const AcademicPeriod = require("../models/AcademicPeriod");
 const Activity = require("../models/Activity");
+const Class = require("../models/Class");
 const { requireAdmin } = require("../middleware/authorization");
 const { logAudit } = require("../services/auditLogger");
 
@@ -17,10 +18,15 @@ function validatePeriod(input) {
   const endDate = new Date(input.endDate);
   const status = input.status || "upcoming";
 
+  const schoolYearMatch = schoolYear.match(/^(\d{4})-(\d{4})$/);
+
   if (!schoolYear || !name || !input.startDate || !input.endDate) {
     return {
       error: "School year, trimester, name, start date, and end date are required",
     };
+  }
+  if (!schoolYearMatch || Number(schoolYearMatch[2]) !== Number(schoolYearMatch[1]) + 1) {
+    return { error: "School year must use consecutive years in YYYY-YYYY format" };
   }
   if (!Number.isInteger(trimester) || trimester < 1 || trimester > 3) {
     return { error: "Trimester must be 1, 2, or 3" };
@@ -47,14 +53,6 @@ async function findCalendarConflict(period, excludeId) {
   });
   if (overlap) return "The dates overlap another term in the school calendar";
 
-  if (period.status === "active") {
-    const activePeriod = await AcademicPeriod.findOne({
-      status: "active",
-      ...(excludeId ? { _id: { $ne: excludeId } } : {}),
-    });
-    if (activePeriod) return "Another academic period is already active";
-  }
-
   return null;
 }
 
@@ -68,8 +66,14 @@ router.get("/", async (req, res) => {
 
     const periods = await AcademicPeriod.find(filter)
       .sort({ schoolYear: -1, trimester: 1 });
-
-    res.json(periods);
+    const withReferences = await Promise.all(periods.map(async (period) => {
+      const [hasActivities, hasClasses] = await Promise.all([
+        Activity.exists({ academicPeriod: period._id }),
+        Class.exists({ schoolYear: period.schoolYear }),
+      ]);
+      return { ...period.toObject(), hasActivities: Boolean(hasActivities), hasClasses: Boolean(hasClasses) };
+    }));
+    res.json(withReferences);
   } catch (error) {
     console.error("Get academic periods error:", error);
 
@@ -88,6 +92,12 @@ router.post("/", requireAdmin, async (req, res) => {
     if (conflict) return res.status(409).json({ error: conflict });
 
     const period = await AcademicPeriod.create(periodData);
+    if (period.status === "active") {
+      await AcademicPeriod.updateMany(
+        { _id: { $ne: period._id }, status: "active" },
+        { $set: { status: "completed" } }
+      );
+    }
 
     logAudit({
       req,
@@ -161,6 +171,12 @@ router.patch("/:id", requireAdmin, async (req, res) => {
 
     Object.assign(period, periodData);
     await period.save();
+    if (period.status === "active") {
+      await AcademicPeriod.updateMany(
+        { _id: { $ne: period._id }, status: "active" },
+        { $set: { status: "completed" } }
+      );
+    }
 
     logAudit({
       req,
@@ -197,12 +213,13 @@ router.delete("/:id", requireAdmin, async (req, res) => {
       return res.status(404).json({ error: "Academic period not found" });
     }
 
-    const hasActivities = await Activity.exists({
-      academicPeriod: period._id,
-    });
-    if (hasActivities) {
+    const [hasActivities, hasClasses] = await Promise.all([
+      Activity.exists({ academicPeriod: period._id }),
+      Class.exists({ schoolYear: period.schoolYear }),
+    ]);
+    if (period.status === "active" || hasActivities || hasClasses) {
       return res.status(409).json({
-        error: "This academic period is used by activities and cannot be deleted",
+        error: "An active school year or a year with existing classes or activities cannot be deleted",
       });
     }
 

@@ -73,7 +73,7 @@ async function getAuthenticatedClient(userId) {
   return { oauth2Client, accessToken: currentAccessToken || decryptGoogleToken(integration.accessToken), integration };
 }
 
-async function uploadFileToDrive({ userId, fileName, mimeType, fileBuffer, description }) {
+async function uploadFileToDrive({ userId, fileName, mimeType, fileBuffer, description, convertToGoogleSheet = false }) {
   const { accessToken, integration } = await getAuthenticatedClient(userId);
 
   const boundary = "-------DNHS_SGMS_DRIVE_BOUNDARY_" + Date.now();
@@ -81,9 +81,9 @@ async function uploadFileToDrive({ userId, fileName, mimeType, fileBuffer, descr
   const closeDelimiter = "\r\n--" + boundary + "--";
 
   const metadata = {
-    name: fileName,
+    name: convertToGoogleSheet ? fileName.replace(/\.xlsx$/i, "") : fileName,
     description: description || "Exported from DNHS-SGMS",
-    mimeType: mimeType || "application/octet-stream",
+    mimeType: convertToGoogleSheet ? "application/vnd.google-apps.spreadsheet" : (mimeType || "application/octet-stream"),
   };
 
   const bufferData = Buffer.isBuffer(fileBuffer)
@@ -139,7 +139,9 @@ async function uploadFileToDrive({ userId, fileName, mimeType, fileBuffer, descr
   return {
     fileId: file.id,
     name: file.name,
-    webViewLink: file.webViewLink || `https://drive.google.com/file/d/${file.id}/view`,
+    webViewLink: convertToGoogleSheet
+      ? `https://docs.google.com/spreadsheets/d/${file.id}/edit`
+      : (file.webViewLink || `https://drive.google.com/file/d/${file.id}/view`),
     mimeType: file.mimeType,
   };
 }

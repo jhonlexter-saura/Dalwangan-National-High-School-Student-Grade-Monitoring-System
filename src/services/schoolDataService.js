@@ -584,7 +584,7 @@ export function disconnectGoogle() {
   });
 }
 
-export function saveReportToGoogleDrive({ fileName, mimeType, fileData, reportType, description }) {
+export function saveReportToGoogleDrive({ fileName, mimeType, fileData, reportType, description, convertToGoogleSheet }) {
   return request("/exports/google/drive", {
     method: "POST",
     body: JSON.stringify({
@@ -593,6 +593,7 @@ export function saveReportToGoogleDrive({ fileName, mimeType, fileData, reportTy
       fileData,
       reportType,
       description,
+      convertToGoogleSheet,
     }),
   });
 }

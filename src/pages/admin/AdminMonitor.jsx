@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Activity, CalendarDays, CircleAlert, Cloud, Download, FileSearch, FileSpreadsheet, FileText, RefreshCw, Search, Settings2, ShieldCheck, X } from "lucide-react";
-import { exportAuditLogs, exportReportToGoogleSheets, getAuditLogDetail, getAuditLogExportData, getAuditLogs, getGoogleIntegrationStatus, saveReportToGoogleDrive } from "../../services/schoolDataService";
+import { Activity, CalendarDays, Check, ChevronDown, CircleAlert, Cloud, Copy, Download, FileSearch, RefreshCw, Search, Settings2, ShieldCheck, X } from "lucide-react";
+import { exportAuditLogs, exportReportToGoogleSheets, getAuditLogDetail, getAuditLogExportData, getAuditLogs, getGoogleConnectUrl, getGoogleIntegrationStatus, saveReportToGoogleDrive } from "../../services/schoolDataService";
 import { adminAuditRowsForSheets, createAdminAuditPdf, createAdminAuditXlsx, downloadAdminAuditPdf, downloadAdminAuditXlsx } from "../../utils/adminAuditExports";
 import { useToast } from "../../context/ToastContext";
 import { blobToBase64 } from "../../utils/googleFileData";
@@ -9,6 +9,7 @@ import { blobToBase64 } from "../../utils/googleFileData";
 const INITIAL_FILTERS = { search: "", category: "all", role: "all", timeframe: "all", startDate: "", endDate: "" };
 const CATEGORY_LABELS = { grades: "Grades", classes: "Classes", activities: "Activities", students: "Students", accounts: "Accounts", calendar: "Calendar", system: "System" };
 const ROLE_LABELS = { admin: "Administrator", teacher: "Faculty Teacher", student: "Student" };
+const PENDING_DRIVE_EXPORT_KEY = "admin-monitor-pending-drive-export";
 
 function formatDate(value) {
   if (!value) return "—";
@@ -66,13 +67,33 @@ function getEntityHref(log) {
 function StatusBadge({ log }) {
   const historicalUnknownActor = log.details?.historicalBackfill && log.details?.actorKnown === false;
   const status = historicalUnknownActor ? "warning" : (log.status || "success");
+  const rateLimited = log.action?.includes("RATE_LIMITED") || log.action === "ACCOUNT_SIGN_IN_DELAYED";
   const reason = log.details?.failureReason || log.details?.error || log.details?.reason || (historicalUnknownActor ? "Historical record imported without original actor information." : "");
   const styles = {
     success: "bg-emerald-100 text-emerald-800 ring-emerald-200",
     failed: "bg-red-100 text-red-800 ring-red-200",
     warning: "bg-amber-100 text-amber-900 ring-amber-300",
   };
-  return <span title={reason || titleCase(status)} className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${styles[status] || styles.success}`}>{status === "warning" || status === "failed" ? <CircleAlert size={13} /> : null}{titleCase(status)}</span>;
+  return <span title={reason || titleCase(status)} className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${styles[status] || styles.success}`}>{status === "warning" || status === "failed" ? <CircleAlert size={13} /> : null}{rateLimited ? "Rate Limited" : titleCase(status)}</span>;
+}
+
+function isFailedLogin(log) {
+  return log.status === "failed" && (log.action === "USER_LOGIN" || /failed sign-in/i.test(log.description || ""));
+}
+
+function groupFailedLogins(logs) {
+  const grouped = [];
+  for (const log of logs || []) {
+    const key = isFailedLogin(log) ? [log.actor?.email || log.details?.attemptedIdentifierHash || log.ipAddress || "unknown", log.action, log.description].join("|") : "";
+    const previous = grouped[grouped.length - 1];
+    if (key && previous?.groupKey === key) {
+      previous.logs.push(log);
+      previous.log = { ...previous.log, createdAt: log.createdAt };
+    } else {
+      grouped.push({ log, logs: [log], groupKey: key });
+    }
+  }
+  return grouped;
 }
 
 function ActorCell({ actor }) {
@@ -97,6 +118,8 @@ export default function AdminMonitor() {
   const [selectedLog, setSelectedLog] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [exportingFormat, setExportingFormat] = useState("");
+  const [openExportMenu, setOpenExportMenu] = useState("");
+  const [copiedDetails, setCopiedDetails] = useState(false);
   const [googleStatus, setGoogleStatus] = useState({ available: false, connected: false });
   const requestSequence = useRef(0);
 
@@ -160,34 +183,81 @@ export default function AdminMonitor() {
     finally { setExportingFormat(""); }
   };
 
-  const saveToGoogleDrive = async (format) => {
+  const saveToGoogleDrive = async (format, connected = googleStatus.connected, exportQuery = query) => {
     try {
       setExportingFormat(`drive-${format}`);
-      if (!googleStatus.connected) throw new Error("Connect Google Drive in Integration Management before saving exports.");
-      const { logs } = await getAuditLogExportData(query);
+      if (!connected) {
+        sessionStorage.setItem(PENDING_DRIVE_EXPORT_KEY, JSON.stringify({ format, query: exportQuery }));
+        const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        const { authUrl } = await getGoogleConnectUrl(returnTo);
+        window.location.assign(authUrl);
+        return;
+      }
+      const { logs } = await getAuditLogExportData(exportQuery);
       let blob;
       let fileName;
       let mimeType;
       if (format === "csv") {
-        blob = await exportAuditLogs(query);
+        blob = await exportAuditLogs(exportQuery);
         fileName = `DNHS-SGMS-Audit-Logs-${new Date().toISOString().slice(0, 10)}.csv`;
         mimeType = "text/csv";
       } else {
-        const result = format === "xlsx" ? createAdminAuditXlsx({ logs }) : createAdminAuditPdf({ logs, filters: query });
+        const result = format === "xlsx" ? createAdminAuditXlsx({ logs }) : createAdminAuditPdf({ logs, filters: exportQuery });
         ({ blob, fileName } = result);
         mimeType = format === "xlsx" ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "application/pdf";
       }
-      const result = await saveReportToGoogleDrive({ fileName, mimeType, fileData: await blobToBase64(blob), reportType: `admin_audit_${format}` });
+      const result = await saveReportToGoogleDrive({ fileName, mimeType, fileData: await blobToBase64(blob), reportType: `admin_audit_${format}`, convertToGoogleSheet: format === "xlsx" });
       showToast(result.message || "Export saved to Google Drive.", "success");
+      if (result.webViewLink) window.open(result.webViewLink, "_blank", "noopener,noreferrer");
     } catch (err) { showToast(err.message || "Unable to save the export to Google Drive.", "error"); }
     finally { setExportingFormat(""); }
   };
 
-  const exportToSheets = async () => {
+  useEffect(() => {
+    const callbackUrl = new URL(window.location.href);
+    const connected = callbackUrl.searchParams.get("google_connected");
+    const callbackError = callbackUrl.searchParams.get("google_error");
+    if (!connected && !callbackError) return;
+
+    const pending = sessionStorage.getItem(PENDING_DRIVE_EXPORT_KEY);
+    sessionStorage.removeItem(PENDING_DRIVE_EXPORT_KEY);
+    callbackUrl.searchParams.delete("google_connected");
+    callbackUrl.searchParams.delete("google_error");
+    window.history.replaceState({}, "", `${callbackUrl.pathname}${callbackUrl.search}${callbackUrl.hash}`);
+
+    if (callbackError) {
+      showToast(`Google connection failed: ${callbackError}`, "error");
+      return;
+    }
+    showToast("Google Drive connected successfully.", "success");
+    if (pending) {
+      try {
+        const { format, query: pendingQuery } = JSON.parse(pending);
+        if (["pdf", "xlsx", "csv", "sheets"].includes(format)) {
+          if (pendingQuery) setQuery(pendingQuery);
+          setGoogleStatus((current) => ({ ...current, connected: true }));
+          if (format === "sheets") void exportToSheets(true, pendingQuery || INITIAL_FILTERS);
+          else void saveToGoogleDrive(format, true, pendingQuery || INITIAL_FILTERS);
+        }
+      } catch {
+        showToast("Google connected, but the pending export could not be resumed. Please save it again.", "error");
+      }
+    } else {
+      getGoogleIntegrationStatus().then(setGoogleStatus).catch(() => {});
+    }
+  }, []);
+
+  const exportToSheets = async (connected = googleStatus.connected, exportQuery = query) => {
     try {
       setExportingFormat("sheets");
-      if (!googleStatus.connected) throw new Error("Connect Google Drive in Integration Management before exporting to Sheets.");
-      const { logs } = await getAuditLogExportData(query);
+      if (!connected) {
+        sessionStorage.setItem(PENDING_DRIVE_EXPORT_KEY, JSON.stringify({ format: "sheets", query: exportQuery }));
+        const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        const { authUrl } = await getGoogleConnectUrl(returnTo);
+        window.location.assign(authUrl);
+        return;
+      }
+      const { logs } = await getAuditLogExportData(exportQuery);
       const { headers, rows } = adminAuditRowsForSheets(logs);
       const result = await exportReportToGoogleSheets({
         title: `DNHS-SGMS Audit Activity ${new Date().toISOString().slice(0, 10)}`,
@@ -216,6 +286,17 @@ export default function AdminMonitor() {
   ];
 
   const totalPages = data.pagination?.totalPages || 1;
+  const visibleRows = useMemo(() => groupFailedLogins(data.logs), [data.logs]);
+
+  const copyDetails = async () => {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(selectedLog?.details || {}, null, 2));
+      setCopiedDetails(true);
+      window.setTimeout(() => setCopiedDetails(false), 1600);
+    } catch {
+      showToast("Could not copy change details.", "error");
+    }
+  };
 
   return (
     <div className="space-y-6 p-4 sm:p-6 lg:p-8">
@@ -225,17 +306,35 @@ export default function AdminMonitor() {
           <h1 className="text-2xl font-bold text-gray-900">Activity monitor</h1>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-gray-600">Review sign-ins and changes made across grades, classes, accounts, and school settings.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button onClick={loadLogs} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"><RefreshCw size={16} /> Refresh</button>
-          <button onClick={() => exportLogs("pdf")} disabled={!data.logs?.length || Boolean(exportingFormat)} className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-3 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"><FileText size={16} /> {exportingFormat === "pdf" ? "Preparing PDF…" : "Export PDF"}</button>
-          <button onClick={() => exportLogs("xlsx")} disabled={!data.logs?.length || Boolean(exportingFormat)} className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"><FileSpreadsheet size={16} /> {exportingFormat === "xlsx" ? "Preparing Excel…" : "Export Excel"}</button>
-          <button onClick={() => exportLogs("csv")} disabled={!data.logs?.length || Boolean(exportingFormat)} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"><Download size={16} /> {exportingFormat === "csv" ? "Preparing CSV…" : "Export CSV"}</button>
-          {googleStatus.available && <>
-            <button onClick={() => saveToGoogleDrive("pdf")} disabled={!data.logs?.length || Boolean(exportingFormat)} className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"><Cloud size={16} /> {exportingFormat === "drive-pdf" ? "Saving…" : "Save PDF to Drive"}</button>
-            <button onClick={() => saveToGoogleDrive("xlsx")} disabled={!data.logs?.length || Boolean(exportingFormat)} className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"><Cloud size={16} /> {exportingFormat === "drive-xlsx" ? "Saving…" : "Save Excel to Drive"}</button>
-            <button onClick={() => saveToGoogleDrive("csv")} disabled={!data.logs?.length || Boolean(exportingFormat)} className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"><Cloud size={16} /> {exportingFormat === "drive-csv" ? "Saving…" : "Save CSV to Drive"}</button>
-            <button onClick={exportToSheets} disabled={!data.logs?.length || Boolean(exportingFormat)} className="inline-flex items-center gap-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-sm font-medium text-green-900 hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"><FileSpreadsheet size={16} /> {exportingFormat === "sheets" ? "Exporting…" : "Export to Sheets"}</button>
-          </>}
+          <ExportDropdown
+            label="Download"
+            icon={Download}
+            open={openExportMenu === "download"}
+            onToggle={() => setOpenExportMenu(openExportMenu === "download" ? "" : "download")}
+            disabled={!data.logs?.length || Boolean(exportingFormat)}
+            loading={exportingFormat}
+            options={[
+              { label: "PDF", value: "pdf", busy: "Preparing PDF…", onClick: exportLogs },
+              { label: "Excel", value: "xlsx", busy: "Preparing Excel…", onClick: exportLogs },
+              { label: "CSV", value: "csv", busy: "Preparing CSV…", onClick: exportLogs },
+            ]}
+          />
+          {googleStatus.available && <ExportDropdown
+            label="Save to Google Drive"
+            icon={Cloud}
+            open={openExportMenu === "drive"}
+            onToggle={() => setOpenExportMenu(openExportMenu === "drive" ? "" : "drive")}
+            disabled={!data.logs?.length || Boolean(exportingFormat)}
+            loading={exportingFormat}
+            options={[
+              { label: "PDF", value: "drive-pdf", busy: "Saving…", onClick: () => saveToGoogleDrive("pdf") },
+              { label: "Excel", value: "drive-xlsx", busy: "Saving…", onClick: () => saveToGoogleDrive("xlsx") },
+              { label: "CSV", value: "drive-csv", busy: "Saving…", onClick: () => saveToGoogleDrive("csv") },
+              { label: "Google Sheets", value: "sheets", busy: "Exporting…", onClick: exportToSheets },
+            ]}
+          />}
         </div>
       </header>
 
@@ -246,6 +345,10 @@ export default function AdminMonitor() {
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 bg-slate-50/70 p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-sm font-semibold text-slate-800">Filter this audit table</h2><p className="mt-0.5 text-xs text-slate-500">These filters only narrow the activity records shown below.</p></div><button type="button" onClick={resetFilters} className="rounded-lg px-3 py-2 text-sm font-medium text-blue-800 hover:bg-blue-50">Clear filters</button></div>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <button type="button" aria-pressed={Boolean(query.securityOnly)} onClick={() => updateFilter("securityOnly", query.securityOnly ? "" : "true")} className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${query.securityOnly ? "border-red-300 bg-red-50 text-red-800 ring-2 ring-red-100" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"}`}><CircleAlert size={13} className="mr-1.5 inline" />Security &amp; Errors</button>
+            {query.securityOnly && <span className="text-xs text-slate-500">Showing failed sign-ins, rate limits, and warning events</span>}
+          </div>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             <label className="relative sm:col-span-2 xl:col-span-1"><span className="sr-only">Search this audit table</span><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-700" /><input value={filters.search} onChange={(e) => updateFilter("search", e.target.value)} placeholder="Filter audit records: person, action, record" className="w-full rounded-lg border border-blue-200 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-900 outline-none placeholder:text-slate-500 focus:border-blue-600 focus:ring-2 focus:ring-blue-100" /></label>
             <label><span className="sr-only">Category</span><select value={filters.category} onChange={(e) => updateFilter("category", e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800"><option value="all">All categories</option>{Object.entries(CATEGORY_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
@@ -256,12 +359,14 @@ export default function AdminMonitor() {
 
         {error && <div role="alert" className="m-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>}
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[940px] text-left text-sm">
+          <table className="w-full min-w-[900px] text-left text-sm">
             <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-600"><tr><th className="px-4 py-3 font-semibold">Action &amp; record</th><th className="px-4 py-3 font-semibold">Who</th><th className="px-4 py-3 font-semibold">Category</th><th className="px-4 py-3 font-semibold">When</th><th className="px-4 py-3 font-semibold">Status</th><th className="sticky right-0 bg-slate-100 px-4 py-3 text-right font-semibold">Details</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
-              {loading ? <tr><td colSpan="6" className="px-4 py-12 text-center text-slate-500">Loading activity…</td></tr> : data.logs?.length ? data.logs.map((log) => {
+              {loading ? <tr><td colSpan="6" className="px-4 py-12 text-center text-slate-500">Loading activity…</td></tr> : visibleRows.length ? visibleRows.map(({ log, logs: groupedLogs }, rowIndex) => {
                 const entityHref = getEntityHref(log);
-                return <tr key={log._id} className="hover:bg-slate-50/80"><td className="max-w-[390px] px-4 py-3"><div className="font-semibold text-slate-800">{titleCase(log.action)}</div><div className="mt-0.5 truncate text-slate-600">{log.description}</div>{log.target?.name && <div className="mt-1 truncate text-xs">{entityHref ? <button type="button" onClick={() => navigate(entityHref)} className="font-medium text-blue-700 underline decoration-blue-300 underline-offset-2 hover:text-blue-900">Record: {log.target.name}</button> : <span className="text-slate-500">Record: {log.target.name}</span>}</div>}</td><td className="px-4 py-3"><ActorCell actor={log.actor} /></td><td className="px-4 py-3"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">{CATEGORY_LABELS[log.category] || titleCase(log.category)}</span></td><td className="whitespace-nowrap px-4 py-3 text-slate-700">{formatDate(log.createdAt)}</td><td className="px-4 py-3"><StatusBadge log={log} /></td><td className="sticky right-0 bg-white px-4 py-3 text-right shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]"><button onClick={() => showDetail(log)} className="rounded-md px-2.5 py-1.5 font-semibold text-blue-800 hover:bg-blue-50">Details</button></td></tr>;
+                const grouped = groupedLogs.length > 1;
+                const rowLog = grouped ? { ...log, createdAt: groupedLogs[groupedLogs.length - 1].createdAt } : log;
+                return <tr key={`${log._id}-${rowIndex}`} className={`hover:bg-slate-50/80 ${log.status === "failed" ? "border-l-4 border-l-red-300" : log.status === "warning" ? "border-l-4 border-l-amber-300" : ""}`}><td className="max-w-md px-4 py-3"><div className="font-semibold text-slate-800">{grouped ? `User Login (${groupedLogs.length} failed attempts)` : titleCase(log.action)}</div><div className="mt-0.5 whitespace-normal break-words text-slate-600">{grouped ? `Repeated failed sign-in attempts${log.ipAddress ? ` from ${log.ipAddress}` : ""}.` : log.description}</div>{log.target?.name && !grouped && <div className="mt-1 truncate text-xs">{entityHref ? <button type="button" onClick={() => navigate(entityHref)} className="font-medium text-blue-700 underline decoration-blue-300 underline-offset-2 hover:text-blue-900">Record: {log.target.name}</button> : <span className="text-slate-500">Record: {log.target.name}</span>}</div>}</td><td className="px-4 py-3"><ActorCell actor={log.actor} /></td><td className="px-4 py-3"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">{CATEGORY_LABELS[log.category] || titleCase(log.category)}</span></td><td className="min-w-[165px] whitespace-nowrap px-4 py-3 text-slate-700">{formatDate(rowLog.createdAt)}</td><td className="px-4 py-3"><StatusBadge log={log} /></td><td className="sticky right-0 bg-white px-4 py-3 text-right shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]"><button onClick={() => showDetail(log)} className="rounded-md px-2.5 py-1.5 font-semibold text-blue-800 hover:bg-blue-50">Details</button></td></tr>;
               }) : <tr><td colSpan="6" className="px-4 py-14 text-center"><div className="mx-auto flex max-w-sm flex-col items-center text-slate-500"><FileSearch size={30} className="mb-3 text-slate-300" /><div className="font-semibold text-slate-700">No activity found</div><p className="mt-1 text-sm">Try another search or filter. New changes will appear here as they are recorded.</p></div></td></tr>}
             </tbody>
           </table>
@@ -273,7 +378,14 @@ export default function AdminMonitor() {
         </footer>
       </section>
 
-      {selectedLog && <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/30" onClick={() => setSelectedLog(null)}><aside role="dialog" aria-modal="true" aria-label="Audit record details" onClick={(event) => event.stopPropagation()} className="h-full w-full max-w-lg overflow-y-auto bg-white p-6 shadow-2xl"><div className="flex items-start justify-between"><div><div className="text-sm font-medium text-blue-700">Audit record</div><h2 className="mt-1 text-xl font-bold text-slate-900">{titleCase(selectedLog.action)}</h2></div><button onClick={() => setSelectedLog(null)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="Close details"><X size={19} /></button></div>{detailLoading && <p className="mt-3 text-xs text-slate-400">Loading full record…</p>}<p className="mt-4 text-sm text-slate-600">{selectedLog.description}</p><dl className="mt-6 divide-y divide-slate-100">{[["Actor", selectedLog.actor?.name], ["Email", selectedLog.actor?.email], ["Role", ROLE_LABELS[selectedLog.actor?.role] || titleCase(selectedLog.actor?.role)], ["Date and time", formatDate(selectedLog.createdAt)], ["Category", CATEGORY_LABELS[selectedLog.category] || titleCase(selectedLog.category)], ["Target", selectedLog.target?.name], ["Record type", selectedLog.target?.entityType], ["Record ID", selectedLog.target?.entityId], ["IP address", selectedLog.ipAddress], ["Status", titleCase(selectedLog.status || "success")]].filter(([, value]) => value).map(([label, value]) => <div key={label} className="grid grid-cols-[130px_1fr] gap-3 py-3 text-sm"><dt className="text-slate-500">{label}</dt><dd className="break-words font-medium text-slate-800">{value}</dd></div>)}</dl>{selectedLog.details && Object.keys(selectedLog.details).length > 0 && <div className="mt-5"><h3 className="text-sm font-semibold text-slate-800">Change details</h3><pre className="mt-2 overflow-x-auto rounded-lg bg-slate-50 p-3 text-xs text-slate-600">{JSON.stringify(selectedLog.details, null, 2)}</pre></div>}</aside></div>}
+      {selectedLog && <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/30" onClick={() => setSelectedLog(null)}><aside role="dialog" aria-modal="true" aria-label="Audit record details" onClick={(event) => event.stopPropagation()} className="h-full w-full max-w-lg overflow-y-auto scroll-smooth bg-white p-6 pb-8 shadow-2xl"><div className="flex items-start justify-between"><div><div className="text-sm font-medium text-blue-700">Audit record</div><h2 className="mt-1 text-xl font-bold text-slate-900">{titleCase(selectedLog.action)}</h2></div><button onClick={() => setSelectedLog(null)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="Close details"><X size={19} /></button></div>{detailLoading && <p className="mt-3 text-xs text-slate-400">Loading full record…</p>}<p className="mt-4 text-sm text-slate-600">{selectedLog.description}</p><dl className="mt-6 divide-y divide-slate-100">{[["Actor", selectedLog.actor?.name], ["Email", selectedLog.actor?.email], ["Role", ROLE_LABELS[selectedLog.actor?.role] || titleCase(selectedLog.actor?.role)], ["Date and time", formatDate(selectedLog.createdAt)], ["Category", CATEGORY_LABELS[selectedLog.category] || titleCase(selectedLog.category)], ["Target", selectedLog.target?.name], ["Record type", selectedLog.target?.entityType], ["Record ID", selectedLog.target?.entityId], ["IP address", selectedLog.ipAddress], ["Status", selectedLog.status || "success"]].filter(([, value]) => value).map(([label, value]) => <div key={label} className="grid grid-cols-[130px_1fr] gap-3 py-3 text-sm"><dt className="text-slate-500">{label}</dt><dd className="break-words font-medium text-slate-800">{label === "Status" ? <StatusBadge log={selectedLog} /> : value}</dd></div>)}</dl>{selectedLog.details && Object.keys(selectedLog.details).length > 0 && <div className="mt-5"><div className="flex items-center justify-between gap-3"><h3 className="text-sm font-semibold text-slate-800">Change details</h3><button type="button" onClick={copyDetails} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50" title="Copy JSON"><Copy size={14} />{copiedDetails ? <><Check size={13} /> Copied</> : "Copy JSON"}</button></div><pre className="mt-2 max-h-[45vh] overflow-auto rounded-lg bg-slate-50 p-3 text-xs text-slate-600">{JSON.stringify(selectedLog.details, null, 2)}</pre></div>}</aside></div>}
     </div>
   );
+}
+
+function ExportDropdown({ label, icon: Icon, open, onToggle, disabled, loading, options }) {
+  return <div className="relative">
+    <button type="button" aria-haspopup="menu" aria-expanded={open} onClick={onToggle} disabled={disabled} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"><Icon size={16} />{label}<ChevronDown size={15} className={`transition-transform ${open ? "rotate-180" : ""}`} /></button>
+    {open && <div role="menu" className="absolute right-0 z-30 mt-2 min-w-48 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg">{options.map((option) => <button key={option.value} type="button" role="menuitem" disabled={Boolean(loading)} onClick={() => { onToggle(); option.onClick(option.value === "xlsx" || option.value === "pdf" || option.value === "csv" ? option.value : undefined); }} className="flex w-full items-center justify-between gap-4 px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-60">{option.label}{loading === option.value && <span className="text-xs text-slate-500">{option.busy}</span>}</button>)}</div>}
+  </div>;
 }

@@ -28,9 +28,18 @@ router.get("/", requireAdmin, async (req, res) => {
       timeframe,
       startDate,
       endDate,
+      securityOnly,
     } = req.query;
 
     const query = {};
+
+    if (securityOnly === "true") {
+      query.$or = [
+        { status: { $in: ["failed", "warning"] } },
+        { action: { $in: ["AUTH_RATE_LIMITED", "ACCOUNT_SIGN_IN_DELAYED", "PASSWORD_RECOVERY_RATE_LIMITED"] } },
+        { description: /failed sign-in|authentication rate limit/i },
+      ];
+    }
 
     // Category filter
     if (category && category !== "all") {
@@ -74,13 +83,15 @@ router.get("/", requireAdmin, async (req, res) => {
     if (search && search.trim()) {
       const safeSearch = escapeRegex(search.trim());
       const regex = new RegExp(safeSearch, "i");
-      query.$or = [
+      const searchTerms = [
         { description: regex },
         { "actor.name": regex },
         { "actor.email": regex },
         { "target.name": regex },
         { action: regex },
       ];
+      if (query.$or) query.$and = [{ $or: query.$or }, { $or: searchTerms }];
+      else query.$or = searchTerms;
     }
 
     // Parallel fetch for logs, total count, and summary statistics
@@ -130,8 +141,16 @@ router.get("/", requireAdmin, async (req, res) => {
 // GET /api/audit-logs/export - Export audit logs as CSV
 router.get("/export", requireAdmin, async (req, res) => {
   try {
-    const { category, action, role, timeframe, startDate, endDate, search } = req.query;
+    const { category, action, role, timeframe, startDate, endDate, search, securityOnly } = req.query;
     const query = {};
+
+    if (securityOnly === "true") {
+      query.$or = [
+        { status: { $in: ["failed", "warning"] } },
+        { action: { $in: ["AUTH_RATE_LIMITED", "ACCOUNT_SIGN_IN_DELAYED", "PASSWORD_RECOVERY_RATE_LIMITED"] } },
+        { description: /failed sign-in|authentication rate limit/i },
+      ];
+    }
 
     if (category && category !== "all") query.category = category;
     if (action && action !== "all") query.action = action;
@@ -139,13 +158,15 @@ router.get("/export", requireAdmin, async (req, res) => {
 
     if (search && search.trim()) {
       const regex = new RegExp(escapeRegex(search.trim()), "i");
-      query.$or = [
+      const searchTerms = [
         { description: regex },
         { "actor.name": regex },
         { "actor.email": regex },
         { "target.name": regex },
         { action: regex },
       ];
+      if (query.$or) query.$and = [{ $or: query.$or }, { $or: searchTerms }];
+      else query.$or = searchTerms;
     }
 
     const now = new Date();

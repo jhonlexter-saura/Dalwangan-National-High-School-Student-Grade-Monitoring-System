@@ -10,7 +10,7 @@ const router = express.Router();
 
 // POST /drive - Save file (PDF, XLSX, CSV) to Google Drive
 router.post("/drive", requireAuthenticatedUser, async (req, res) => {
-  const { fileName, mimeType, fileData, reportType, description } = req.body || {};
+  const { fileName, mimeType, fileData, reportType, description, convertToGoogleSheet } = req.body || {};
 
   const allowedMimeTypes = new Set([
     "application/pdf",
@@ -28,6 +28,9 @@ router.post("/drive", requireAuthenticatedUser, async (req, res) => {
   if (mimeType && !allowedMimeTypes.has(mimeType)) {
     return res.status(400).json({ error: "Only PDF, XLSX, and CSV exports can be saved to Google Drive." });
   }
+  if (convertToGoogleSheet && mimeType !== "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") {
+    return res.status(400).json({ error: "Only Excel workbooks can be converted to Google Sheets." });
+  }
 
   try {
     const fileBuffer = Buffer.from(fileData, "base64");
@@ -39,6 +42,7 @@ router.post("/drive", requireAuthenticatedUser, async (req, res) => {
       mimeType: mimeType || "application/octet-stream",
       fileBuffer,
       description: description || `DNHS-SGMS ${reportType || "Export"}`,
+      convertToGoogleSheet: Boolean(convertToGoogleSheet),
     });
 
     logAudit({
@@ -59,7 +63,7 @@ router.post("/drive", requireAuthenticatedUser, async (req, res) => {
       fileId: result.fileId,
       name: result.name,
       webViewLink: result.webViewLink,
-      message: `“${result.name}” was saved to your Google Drive.`,
+      message: convertToGoogleSheet ? `“${result.name}” was saved as a Google Sheet.` : `“${result.name}” was saved to your Google Drive.`,
     });
   } catch (error) {
     console.error("Google Drive export error:", error.message);
