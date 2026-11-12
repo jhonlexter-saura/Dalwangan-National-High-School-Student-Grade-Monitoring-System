@@ -50,4 +50,13 @@ gradebookSchema.index(
   }
 );
 
+// One class-wide gradebook per class and period (subjectAssignment is null).
+gradebookSchema.index(
+  { class: 1, academicPeriod: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { subjectAssignment: { $type: "null" } },
+  }
+);
+
 module.exports = mongoose.model("Gradebook", gradebookSchema);

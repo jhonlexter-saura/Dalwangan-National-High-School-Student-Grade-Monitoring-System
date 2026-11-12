@@ -48,6 +48,25 @@ async function syncStudentClassDetails(studentIds, classRecord) {
   }
 }
 
+async function addStudentsAtomically(classId, studentIds) {
+  const results = await Promise.all(studentIds.map((studentId) =>
+    Class.findOneAndUpdate(
+      { _id: classId, students: { $ne: studentId } },
+      { $addToSet: { students: studentId } },
+      { new: true }
+    ).select("_id").lean()
+  ));
+  return studentIds.filter((_, index) => Boolean(results[index]));
+}
+
+async function addStudentAtomically(classId, studentId) {
+  return Class.findOneAndUpdate(
+    { _id: classId, students: { $ne: studentId } },
+    { $addToSet: { students: studentId } },
+    { new: true }
+  ).select("_id").lean();
+}
+
 // GET all students
 router.get("/", async (req, res) => {
   try {
@@ -394,11 +413,12 @@ router.post(
         }
       }
 
-      if (idsToAdd.length > 0) {
-        classData.students.push(...idsToAdd);
-        await classData.save();
-        await syncStudentClassDetails(idsToAdd, classData);
-        await notifyStudentIdsOfEnrollment(idsToAdd, classData);
+      const newlyAddedIds = idsToAdd.length > 0
+        ? await addStudentsAtomically(classId, idsToAdd)
+        : [];
+      if (newlyAddedIds.length > 0) {
+        await syncStudentClassDetails(newlyAddedIds, classData);
+        await notifyStudentIdsOfEnrollment(newlyAddedIds, classData);
       }
 
       const updatedClass = await Class.findById(classId)
@@ -406,19 +426,19 @@ router.post(
         .populate("students");
 
       res.json({
-        message: `${idsToAdd.length} student(s) added successfully`,
+        message: `${newlyAddedIds.length} student(s) added successfully`,
         class: updatedClass,
-        addedCount: idsToAdd.length,
+        addedCount: newlyAddedIds.length,
       });
 
-      if (idsToAdd.length > 0) {
+      if (newlyAddedIds.length > 0) {
         logAudit({
           req,
           action: "STUDENTS_ENROLLED",
           category: "students",
           target: { entityType: "Class", entityId: String(classData._id), name: `${classData.name} · Section ${classData.section}` },
-          description: `Enrolled ${idsToAdd.length} student(s) in ${classData.name} (${classData.section})`,
-          details: { classId: classData._id, className: classData.name, studentIds: idsToAdd.map(String), addedCount: idsToAdd.length },
+          description: `Enrolled ${newlyAddedIds.length} student(s) in ${classData.name} (${classData.section})`,
+          details: { classId: classData._id, className: classData.name, studentIds: newlyAddedIds.map(String), addedCount: newlyAddedIds.length },
         });
       }
     } catch (error) {
@@ -467,11 +487,12 @@ router.post("/batch/classes/:classId", async (req, res) => {
       }
     }
 
-    if (idsToAdd.length > 0) {
-      classData.students.push(...idsToAdd);
-      await classData.save();
-      await syncStudentClassDetails(idsToAdd, classData);
-      await notifyStudentIdsOfEnrollment(idsToAdd, classData);
+    const newlyAddedIds = idsToAdd.length > 0
+      ? await addStudentsAtomically(classId, idsToAdd)
+      : [];
+    if (newlyAddedIds.length > 0) {
+      await syncStudentClassDetails(newlyAddedIds, classData);
+      await notifyStudentIdsOfEnrollment(newlyAddedIds, classData);
     }
 
     const updatedClass = await Class.findById(classId)
@@ -479,19 +500,19 @@ router.post("/batch/classes/:classId", async (req, res) => {
       .populate("students");
 
     res.json({
-      message: `${idsToAdd.length} student(s) added successfully`,
+      message: `${newlyAddedIds.length} student(s) added successfully`,
       class: updatedClass,
-      addedCount: idsToAdd.length,
+      addedCount: newlyAddedIds.length,
     });
 
-    if (idsToAdd.length > 0) {
+    if (newlyAddedIds.length > 0) {
       logAudit({
         req,
         action: "STUDENTS_ENROLLED",
         category: "students",
         target: { entityType: "Class", entityId: String(classData._id), name: `${classData.name} · Section ${classData.section}` },
-        description: `Enrolled ${idsToAdd.length} student(s) in ${classData.name} (${classData.section})`,
-        details: { classId: classData._id, className: classData.name, studentIds: idsToAdd.map(String), addedCount: idsToAdd.length },
+        description: `Enrolled ${newlyAddedIds.length} student(s) in ${classData.name} (${classData.section})`,
+        details: { classId: classData._id, className: classData.name, studentIds: newlyAddedIds.map(String), addedCount: newlyAddedIds.length },
       });
     }
   } catch (error) {
@@ -536,9 +557,10 @@ router.post("/:studentId/classes/:classId", async (req, res) => {
       });
     }
 
-    classData.students.push(student._id);
-
-    await classData.save();
+    const enrolled = await addStudentAtomically(classData._id, student._id);
+    if (!enrolled) {
+      return res.status(409).json({ error: "Student is already enrolled in this class" });
+    }
     await syncStudentClassDetails([student._id], classData);
     await notifyStudentsOfEnrollment([student], classData);
 
@@ -626,9 +648,10 @@ router.post(
         });
       }
 
-      classData.students.push(student._id);
-
-      await classData.save();
+      const enrolled = await addStudentAtomically(classData._id, student._id);
+      if (!enrolled) {
+        return res.status(409).json({ error: "Student is already enrolled in this class" });
+      }
       await syncStudentClassDetails([student._id], classData);
       await notifyStudentsOfEnrollment([student], classData);
 
@@ -661,11 +684,14 @@ router.delete("/:studentId/classes/:classId", requireAdmin, async (req, res) => 
     }
     const classData = await Class.findById(classId);
     if (!classData) return res.status(404).json({ error: "Class not found" });
-    if (!(classData.students || []).some((id) => String(id) === String(studentId))) {
+    const removed = await Class.findOneAndUpdate(
+      { _id: classData._id, students: studentId },
+      { $pull: { students: studentId } },
+      { new: true }
+    ).select("_id").lean();
+    if (!removed) {
       return res.status(404).json({ error: "Student is not enrolled in this class" });
     }
-    classData.students = classData.students.filter((id) => String(id) !== String(studentId));
-    await classData.save();
 
     logAudit({
       req,

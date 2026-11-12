@@ -22,6 +22,10 @@ const {
   requireAuthenticatedUser,
 } = require("../middleware/authorization");
 const { logAudit } = require("../services/auditLogger");
+const {
+  lockGradebookByClassPeriod,
+  lockGradebookByAssignmentPeriod,
+} = require("../middleware/gradebookLock");
 
 const router = express.Router();
 
@@ -105,7 +109,7 @@ router.get("/assignment/:assignmentId/period/:periodId/status", requireAuthentic
   }
 });
 
-router.post("/assignment/:assignmentId/period/:periodId/finalize", requireAuthenticatedUser, async (req, res) => {
+router.post("/assignment/:assignmentId/period/:periodId/finalize", requireAuthenticatedUser, lockGradebookByAssignmentPeriod, async (req, res) => {
   try {
     const { assignmentId, periodId } = req.params;
     if (!mongoose.isValidObjectId(assignmentId) || !mongoose.isValidObjectId(periodId)) {
@@ -123,6 +127,8 @@ router.post("/assignment/:assignmentId/period/:periodId/finalize", requireAuthen
     if (user.role === "teacher" && String(assignment.teacher?.user) !== String(user._id)) {
       return res.status(403).json({ error: "You can only finalize your own subject assignments" });
     }
+    const classGradebook = await Gradebook.findOne({ class: assignment.class._id, academicPeriod: periodId, subjectAssignment: null }).lean();
+    if (classGradebook) return res.status(409).json({ error: "The class gradebook is already finalized for this academic period." });
     const completeness = await isAssignmentGradebookComplete(assignmentId, periodId);
     if (!completeness.complete) {
       return res.status(422).json({
@@ -178,11 +184,12 @@ router.post("/assignment/:assignmentId/period/:periodId/finalize", requireAuthen
     return res.status(201).json({ message: "Subject gradebook finalized", finalizedAt: gradebook.finalizedAt });
   } catch (error) {
     console.error("Error finalizing subject gradebook:", error.message);
+    if (error.code === 11000) return res.status(409).json({ error: "This subject gradebook has already been finalized." });
     return res.status(500).json({ error: "Failed to finalize subject gradebook" });
   }
 });
 
-router.post("/assignment/:assignmentId/period/:periodId/unlock", requireAuthenticatedUser, async (req, res) => {
+router.post("/assignment/:assignmentId/period/:periodId/unlock", requireAuthenticatedUser, lockGradebookByAssignmentPeriod, async (req, res) => {
   try {
     if (req.authenticatedUser.role !== "admin") {
       return res.status(403).json({ error: "Administrator access is required" });
@@ -300,7 +307,7 @@ router.get("/class/:classId/period/:periodId", async (req, res) => {
 
     const [completeness, gradebook] = await Promise.all([
       isGradebookComplete(classId, periodId),
-      Gradebook.findOne({ class: classId, academicPeriod: periodId }).lean(),
+      Gradebook.findOne({ class: classId, academicPeriod: periodId, subjectAssignment: null }).lean(),
     ]);
 
     if (!completeness.complete) {
@@ -343,7 +350,7 @@ router.get("/class/:classId/period/:periodId/status", async (req, res) => {
 
     const [completeness, gradebook] = await Promise.all([
       isGradebookComplete(classId, periodId),
-      Gradebook.findOne({ class: classId, academicPeriod: periodId }).lean(),
+      Gradebook.findOne({ class: classId, academicPeriod: periodId, subjectAssignment: null }).lean(),
     ]);
 
     return res.json({
@@ -363,7 +370,7 @@ router.get("/class/:classId/period/:periodId/status", async (req, res) => {
 // Teacher finalizes the gradebook for this class + period.
 // Blocked if the gradebook is incomplete (any category missing activities).
 // ---------------------------------------------------------------------------
-router.post("/class/:classId/period/:periodId/finalize", requireAuthenticatedUser, async (req, res) => {
+router.post("/class/:classId/period/:periodId/finalize", requireAuthenticatedUser, lockGradebookByClassPeriod, async (req, res) => {
   try {
     const { classId, periodId } = req.params;
     const user = req.authenticatedUser;
@@ -415,6 +422,7 @@ router.post("/class/:classId/period/:periodId/finalize", requireAuthenticatedUse
     const existing = await Gradebook.findOne({
       class: classId,
       academicPeriod: periodId,
+      subjectAssignment: null,
     });
 
     if (existing) {
@@ -477,6 +485,7 @@ router.post("/class/:classId/period/:periodId/finalize", requireAuthenticatedUse
     });
   } catch (error) {
     console.error("Error finalizing gradebook:", error.message);
+    if (error.code === 11000) return res.status(409).json({ error: "This gradebook has already been finalized." });
     return res.status(500).json({ error: "Failed to finalize gradebook" });
   }
 });
@@ -485,7 +494,7 @@ router.post("/class/:classId/period/:periodId/finalize", requireAuthenticatedUse
 // POST /api/grades/class/:classId/period/:periodId/unlock
 // Admin unlocks the finalized gradebook for this class + period.
 // ---------------------------------------------------------------------------
-router.post("/class/:classId/period/:periodId/unlock", requireAuthenticatedUser, async (req, res) => {
+router.post("/class/:classId/period/:periodId/unlock", requireAuthenticatedUser, lockGradebookByClassPeriod, async (req, res) => {
   try {
     const { classId, periodId } = req.params;
 
@@ -503,6 +512,7 @@ router.post("/class/:classId/period/:periodId/unlock", requireAuthenticatedUser,
     const existing = await Gradebook.findOne({
       class: classId,
       academicPeriod: periodId,
+      subjectAssignment: null,
     });
 
     if (!existing) {
@@ -519,6 +529,7 @@ router.post("/class/:classId/period/:periodId/unlock", requireAuthenticatedUser,
     await Gradebook.deleteOne({
       class: classId,
       academicPeriod: periodId,
+      subjectAssignment: null,
     });
 
     try {
@@ -591,6 +602,7 @@ router.get(
       const gradebook = await Gradebook.findOne({
         class: classId,
         academicPeriod: periodId,
+        subjectAssignment: null,
       }).lean();
 
       if (!gradebook) {

@@ -5,7 +5,9 @@ const Class = require("../models/Class");
 const Activity = require("../models/Activity");
 const SubjectAssignment = require("../models/SubjectAssignment");
 const Teacher = require("../models/Teacher");
+const Gradebook = require("../models/Gradebook");
 const { requireAuthenticatedUser } = require("../middleware/authorization");
+const { lockGradebookForScore } = require("../middleware/gradebookLock");
 const { logAudit } = require("../services/auditLogger");
 
 const router = express.Router();
@@ -80,7 +82,7 @@ router.get("/assignment/:assignmentId", async (req, res) => {
 });
 
 // CREATE or update a score
-router.post("/", requireAuthenticatedUser, async (req, res) => {
+router.post("/", requireAuthenticatedUser, lockGradebookForScore, async (req, res) => {
   try {
     const {
       studentId,
@@ -105,7 +107,7 @@ router.post("/", requireAuthenticatedUser, async (req, res) => {
 
     const student = await Student.findById(studentId);
     const classData = await Class.findById(classId);
-    const activity = await Activity.findById(activityId);
+    const activity = req.gradebookActivity || await Activity.findById(activityId);
     const subjectAssignment = await SubjectAssignment.findOne({
       _id: subjectAssignmentId,
       class: classId,
@@ -132,6 +134,7 @@ router.post("/", requireAuthenticatedUser, async (req, res) => {
 
     if (
       !subjectAssignment ||
+      String(activity.class) !== String(classId) ||
       String(activity.subjectAssignment) !== String(subjectAssignment._id)
     ) {
       return res.status(400).json({ error: "Activity does not belong to this subject assignment" });
@@ -147,6 +150,17 @@ router.post("/", requireAuthenticatedUser, async (req, res) => {
       return res.status(400).json({
         error: `Score must be between 0 and ${activity.totalPoints}`,
       });
+    }
+
+    const finalizedGradebook = await Gradebook.exists({
+      academicPeriod: activity.academicPeriod,
+      $or: [
+        { class: classId, subjectAssignment: null },
+        { subjectAssignment: subjectAssignmentId },
+      ],
+    });
+    if (finalizedGradebook) {
+      return res.status(409).json({ error: "This gradebook is finalized. Ask an administrator to unlock it before changing scores." });
     }
 
     const existingScore = await Score.findOne({

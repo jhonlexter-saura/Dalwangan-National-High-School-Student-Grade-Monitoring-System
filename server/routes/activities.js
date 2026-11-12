@@ -6,6 +6,8 @@ const AcademicPeriod = require("../models/AcademicPeriod");
 const SubjectAssignment = require("../models/SubjectAssignment");
 const Teacher = require("../models/Teacher");
 const { requireAuthenticatedUser } = require("../middleware/authorization");
+const { lockGradebookForActivity } = require("../middleware/gradebookLock");
+const Gradebook = require("../models/Gradebook");
 const { logAudit } = require("../services/auditLogger");
 
 const router = express.Router();
@@ -127,7 +129,7 @@ router.get("/:id", async (req, res) => {
 
 
  // CREATE activity
-router.post("/", requireAuthenticatedUser, async (req, res) => {
+router.post("/", requireAuthenticatedUser, lockGradebookForActivity, async (req, res) => {
   try {
     const {
       title,
@@ -229,6 +231,17 @@ router.post("/", requireAuthenticatedUser, async (req, res) => {
         error:
           "Academic period does not belong to the class school year",
       });
+    }
+
+    const finalizedGradebook = await Gradebook.exists({
+      academicPeriod: academicPeriodId,
+      $or: [
+        { class: classId, subjectAssignment: null },
+        { subjectAssignment: subjectAssignmentId },
+      ],
+    });
+    if (finalizedGradebook) {
+      return res.status(409).json({ error: "This gradebook is finalized. Ask an administrator to unlock it before adding activities." });
     }
 
     // Create activity, including the required grading category
