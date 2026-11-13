@@ -10,7 +10,7 @@ const notificationSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ["grade_finalized", "grade_unlocked", "subject_assigned", "class_assigned"],
+      enum: ["grade_finalized", "grade_unlocked", "subject_assigned", "class_assigned", "score_received", "student_subject_added", "student_teacher_assigned"],
       required: true,
     },
     title: { type: String, required: true, trim: true },

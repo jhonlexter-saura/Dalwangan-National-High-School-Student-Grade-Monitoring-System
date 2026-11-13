@@ -5,6 +5,7 @@ const SubjectAssignment = require("../models/SubjectAssignment");
 const Class = require("../models/Class");
 const Teacher = require("../models/Teacher");
 const Notification = require("../models/Notification");
+const Student = require("../models/Student");
 const { requireAdmin, requireAuthenticatedUser } = require("../middleware/authorization");
 const { logAudit } = require("../services/auditLogger");
 
@@ -38,6 +39,33 @@ async function notifyTeacherOfAssignment({ teacher, classRecord, subject, assign
   } catch (error) {
     // Assignment changes should succeed even if notification delivery fails.
     console.error(`Failed to notify teacher about assignment ${assignmentId}:`, error.message);
+  }
+}
+
+async function notifyStudentsOfSubject({ classRecord, subject, teacherName, teacherChanged = false }) {
+  try {
+    const students = await Student.find({ _id: { $in: classRecord.students || [] }, user: { $ne: null } })
+      .select("user")
+      .lean();
+    if (!students.length) return;
+    const notification = teacherChanged
+      ? {
+          type: "student_teacher_assigned",
+          title: "Teacher assigned to your subject",
+          message: `${teacherName} has been assigned to teach ${subject} in ${classRecord.name} · Section ${classRecord.section}.`,
+        }
+      : {
+          type: "student_subject_added",
+          title: "New subject added to your class",
+          message: `${subject} has been added to ${classRecord.name} · Section ${classRecord.section}.`,
+        };
+    await Notification.insertMany(students.map(({ user }) => ({
+      ...notification,
+      recipient: user,
+      link: "/student/grades",
+    })));
+  } catch (error) {
+    console.error("Failed to notify students about subject assignment:", error.message);
   }
 }
 
@@ -113,6 +141,13 @@ router.post("/", requireAdmin, async (req, res) => {
       subject: assignment.subject,
       assignmentId: assignment._id,
     });
+    await notifyStudentsOfSubject({ classRecord, subject: assignment.subject });
+    await notifyStudentsOfSubject({
+      classRecord,
+      subject: assignment.subject,
+      teacherName: teacher.name,
+      teacherChanged: true,
+    });
 
     logAudit({
       req,
@@ -175,6 +210,12 @@ router.patch("/:id", requireAdmin, async (req, res) => {
           classRecord,
           subject: assignment.subject,
           assignmentId: assignment._id,
+        });
+        await notifyStudentsOfSubject({
+          classRecord,
+          subject: assignment.subject,
+          teacherName: assignedTeacher.name,
+          teacherChanged: true,
         });
       }
     }

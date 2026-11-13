@@ -59,6 +59,42 @@
   a,
   input,
   select {
-    outline-color: var(--deped-primary);
+    outline-color: var(--deped-blue);
+  }
+
+  button:enabled,
+  a[href],
+  [role="button"] {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  button:focus-visible,
+  a[href]:focus-visible,
+  [role="button"]:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 3px solid var(--deped-blue);
+    outline-offset: 2px;
+  }
+
+  button[aria-label*="close" i] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent;
+    border-radius: 0.5rem;
+    color: #475569;
+    transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease;
+  }
+
+  button[aria-label*="close" i]:enabled:hover {
+    border-color: #dbeafe;
+    background-color: #eff6ff;
+    color: #1e3a8a;
   }
 }

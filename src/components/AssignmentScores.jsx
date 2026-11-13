@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { Download, FileSpreadsheet, Cloud } from "lucide-react";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
+import * as XLSX from "xlsx";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import {
@@ -7,7 +11,9 @@ import {
   getActivitiesByAssignment, getScoresByActivity, saveScore,
   getAssignmentGradebook, getAssignmentGradebookStatus,
   finalizeSubjectGradebook, unlockSubjectGradebook,
+  getGoogleIntegrationStatus, getGoogleConnectUrl, saveReportToGoogleDrive,
 } from "../services/schoolDataService";
+import { blobToBase64, downloadBlob } from "../utils/googleFileData";
 
 export default function AssignmentScores({ admin = false }) {
   const { user } = useAuth();
@@ -24,6 +30,8 @@ export default function AssignmentScores({ admin = false }) {
   const [tab, setTab] = useState(params.get("tab") || "scores");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [googleStatus, setGoogleStatus] = useState({ available: false, connected: false });
+  const [exporting, setExporting] = useState("");
   const assignment = assignments.find((item) => String(item._id) === String(assignmentId));
   const cls = assignment?.class || {};
   const requestedStudentId = params.get("studentId") || "";
@@ -72,6 +80,7 @@ export default function AssignmentScores({ admin = false }) {
     finally { setBusy(false); }
   }, [assignmentId, periodId, showToast]);
   useEffect(() => { if (tab === "gradebook") loadGradebook(); }, [tab, loadGradebook]);
+  useEffect(() => { getGoogleIntegrationStatus().then(setGoogleStatus).catch(() => {}); }, []);
 
   const updateParam = (name, value) => { const next = new URLSearchParams(params); value ? next.set(name, value) : next.delete(name); setParams(next); };
   const saveScores = async () => {
@@ -93,6 +102,75 @@ export default function AssignmentScores({ admin = false }) {
   const finalize = async () => { try { setBusy(true); await finalizeSubjectGradebook(assignmentId, periodId); showToast("Subject grades finalized.", "success"); await loadGradebook(); } catch (error) { showToast(error.message || "Unable to finalize grades.", "error"); } finally { setBusy(false); } };
   const unlock = async () => { try { setBusy(true); await unlockSubjectGradebook(assignmentId, periodId); showToast("Subject grades unlocked.", "success"); await loadGradebook(); } catch (error) { showToast(error.message || "Unable to unlock grades.", "error"); } finally { setBusy(false); } };
 
+  const exportRows = visibleGradeRows.map((row) => {
+    const student = (cls.students || []).find((item) => String(item._id || item.id) === String(row.studentId));
+    return [student?.studentId || "", student?.name || row.studentId, row.finalGrade ?? row.grade?.finalGrade ?? "—"];
+  });
+  const fileBaseName = `${cls.name || "class"}-${assignment?.subject || "subject"}-${periods.find((item) => String(item._id) === String(periodId))?.name || "gradebook"}`
+    .replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
+  const createGradebookXlsx = () => {
+    const sheet = XLSX.utils.aoa_to_sheet([[`${cls.name} · ${assignment?.subject}`], [`${periods.find((item) => String(item._id) === String(periodId))?.name || ""} Gradebook`], [], ["Student ID", "Student", "Final Grade"], ...exportRows]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, sheet, "Gradebook");
+    return XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+  };
+  const createGradebookPdf = () => {
+    const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+    doc.setFontSize(16);
+    doc.text(`${cls.name} · ${assignment?.subject}`, 40, 40);
+    doc.setFontSize(10);
+    doc.text(`${periods.find((item) => String(item._id) === String(periodId))?.name || ""} Gradebook`, 40, 58);
+    autoTable(doc, {
+      startY: 74,
+      head: [["Student ID", "Student", "Final Grade"]],
+      body: exportRows,
+      theme: "grid",
+      styles: { fontSize: 9, cellPadding: 6 },
+      headStyles: { fillColor: [37, 99, 235] },
+    });
+    return doc.output("blob");
+  };
+  const downloadGradebookPdf = () => {
+    if (!exportRows.length) return;
+    setExporting("pdf");
+    try {
+      downloadBlob(createGradebookPdf(), `${fileBaseName}.pdf`);
+      showToast("Gradebook PDF downloaded.", "success");
+    } catch (error) { showToast(error.message || "Unable to export the gradebook.", "error"); }
+    finally { setExporting(""); }
+  };
+  const downloadGradebookXlsx = () => {
+    if (!exportRows.length) return;
+    setExporting("xlsx");
+    try {
+      downloadBlob(new Blob([createGradebookXlsx()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `${fileBaseName}.xlsx`);
+      showToast("Gradebook Excel file downloaded.", "success");
+    } catch (error) { showToast(error.message || "Unable to export the gradebook.", "error"); }
+    finally { setExporting(""); }
+  };
+  const exportToGoogleSheets = async () => {
+    try {
+      setExporting("sheets");
+      if (!googleStatus.connected) {
+        if (!googleStatus.available) throw new Error("Google Drive is not configured yet. Please contact your administrator.");
+        const { authUrl } = await getGoogleConnectUrl(`${window.location.pathname}${window.location.search}`);
+        window.location.assign(authUrl);
+        return;
+      }
+      const result = await saveReportToGoogleDrive({
+        fileName: `${fileBaseName}.xlsx`,
+        mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        fileData: await blobToBase64(new Blob([createGradebookXlsx()])),
+        reportType: "subject_gradebook",
+        description: `${cls.name} · ${assignment?.subject} gradebook`,
+        convertToGoogleSheet: true,
+      });
+      showToast(result.message || "Gradebook exported to Google Sheets.", "success");
+      if (result.webViewLink) window.open(result.webViewLink, "_blank", "noopener,noreferrer");
+    } catch (error) { showToast(error.message || "Unable to export to Google Sheets.", "error"); }
+    finally { setExporting(""); }
+  };
+
   if (loading) return <div className="p-8 text-center text-gray-500">Loading subject assignments...</div>;
   return <div className="space-y-5">
     <header><h1 className="text-2xl font-bold text-gray-900">Scores &amp; Gradebook</h1><p className="text-sm text-gray-500">Scores and finalization are isolated by class and subject.</p></header>
@@ -105,7 +183,7 @@ export default function AssignmentScores({ admin = false }) {
       <nav className="flex gap-2"><button onClick={() => setTab("scores")} className={`rounded-lg px-4 py-2 text-sm ${tab === "scores" ? "bg-blue-600 text-white" : "bg-white border"}`}>Score Entry</button><button onClick={() => setTab("gradebook")} className={`rounded-lg px-4 py-2 text-sm ${tab === "gradebook" ? "bg-blue-600 text-white" : "bg-white border"}`}>Gradebook</button></nav>
       {requestedStudentId && <p className="rounded-lg bg-blue-50 px-4 py-2 text-sm text-blue-800">Showing progress for {visibleStudents[0]?.name || "selected student"}.</p>}
       {tab === "scores" && (activityId ? <div className="overflow-x-auto rounded-xl border bg-white"><table className="w-full min-w-[540px]"><thead className="bg-gray-50"><tr><th className="p-4 text-left">Student</th><th className="p-4 text-left">Student ID</th><th className="p-4 text-left">Score</th></tr></thead><tbody className="divide-y">{visibleStudents.map((student) => {const id=student._id||student.id; return <tr key={id}><td className="p-4">{student.name}</td><td className="p-4 text-gray-500">{student.studentId}</td><td className="p-4"><input aria-label={`Score for ${student.name}`} type="number" min="0" max={activities.find((item)=>String(item._id)===String(activityId))?.totalPoints} value={scores[id]?.score ?? ""} onChange={(e)=>setScores((old)=>({...old,[id]:{...old[id],score:e.target.value}}))} className="w-28 rounded border px-3 py-2" /></td></tr>;})}</tbody></table><div className="flex justify-end border-t bg-gray-50 p-4"><button disabled={busy} onClick={saveScores} className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50">Save Scores</button></div></div> : <p className="rounded-xl border border-dashed bg-white p-8 text-center text-gray-500">Choose an activity to enter scores.</p>)}
-      {tab === "gradebook" && <section className="space-y-4 rounded-xl border bg-white p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">{cls.name} · {assignment?.subject}</h2><p className="text-sm text-gray-500">{periods.find((item)=>String(item._id)===String(periodId))?.name} · {gradebook?.finalized ? "Finalized" : "Not finalized"}</p></div><div className="flex gap-2">{!requestedStudentId && !gradebook?.finalized && <button disabled={busy || !gradebook?.complete} onClick={finalize} className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white disabled:opacity-50">Finalize grades</button>}{admin && !requestedStudentId && gradebook?.finalized && <button disabled={busy} onClick={unlock} className="rounded-lg border px-4 py-2 text-sm">Unlock grades</button>}</div></div>{gradebook?.missingCategories?.length > 0 && <p className="text-sm text-amber-700">Add activities for: {gradebook.missingCategories.join(", ")}</p>}<div className="overflow-x-auto"><table className="w-full min-w-[500px]"><thead className="bg-gray-50"><tr><th className="p-3 text-left">Student</th><th className="p-3 text-left">Final grade</th></tr></thead><tbody className="divide-y">{visibleGradeRows.map((row) => { const student = (cls.students || []).find((item) => String(item._id || item.id) === String(row.studentId)); return <tr key={row.studentId}><td className="p-3">{student?.name || row.studentId}</td><td className="p-3">{row.finalGrade ?? row.grade?.finalGrade ?? "—"}</td></tr>; })}</tbody></table></div></section>}
+      {tab === "gradebook" && <section className="space-y-4 rounded-xl border bg-white p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">{cls.name} · {assignment?.subject}</h2><p className="text-sm text-gray-500">{periods.find((item)=>String(item._id)===String(periodId))?.name} · {gradebook?.finalized ? "Finalized" : "Not finalized"}</p></div><div className="flex flex-wrap gap-2">{!requestedStudentId && exportRows.length > 0 && <><button type="button" disabled={Boolean(exporting)} onClick={downloadGradebookPdf} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm disabled:opacity-50"><Download size={15} />{exporting === "pdf" ? "Exporting…" : "Export PDF"}</button><button type="button" disabled={Boolean(exporting)} onClick={downloadGradebookXlsx} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm disabled:opacity-50"><FileSpreadsheet size={15} />{exporting === "xlsx" ? "Exporting…" : "Export Excel"}</button>{googleStatus.available && <button type="button" disabled={Boolean(exporting)} onClick={exportToGoogleSheets} className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 disabled:opacity-50"><Cloud size={15} />{exporting === "sheets" ? "Exporting…" : googleStatus.connected ? "Google Sheets" : "Connect Google"}</button>}</>}{!requestedStudentId && !gradebook?.finalized && <button disabled={busy || !gradebook?.complete} onClick={finalize} className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white disabled:opacity-50">Finalize grades</button>}{admin && !requestedStudentId && gradebook?.finalized && <button disabled={busy} onClick={unlock} className="rounded-lg border px-4 py-2 text-sm">Unlock grades</button>}</div></div>{gradebook?.missingCategories?.length > 0 && <p className="text-sm text-amber-700">Add activities for: {gradebook.missingCategories.join(", ")}</p>}<div className="overflow-x-auto"><table className="w-full min-w-[500px]"><thead className="bg-gray-50"><tr><th className="p-3 text-left">Student</th><th className="p-3 text-left">Final grade</th></tr></thead><tbody className="divide-y">{visibleGradeRows.map((row) => { const student = (cls.students || []).find((item) => String(item._id || item.id) === String(row.studentId)); return <tr key={row.studentId}><td className="p-3">{student?.name || row.studentId}</td><td className="p-3">{row.finalGrade ?? row.grade?.finalGrade ?? "—"}</td></tr>; })}</tbody></table></div></section>}
     </>}
   </div>;
 }

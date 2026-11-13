@@ -234,11 +234,8 @@ router.post("/", requireAuthenticatedUser, lockGradebookForActivity, async (req,
     }
 
     const finalizedGradebook = await Gradebook.exists({
+      subjectAssignment: subjectAssignmentId,
       academicPeriod: academicPeriodId,
-      $or: [
-        { class: classId, subjectAssignment: null },
-        { subjectAssignment: subjectAssignmentId },
-      ],
     });
     if (finalizedGradebook) {
       return res.status(409).json({ error: "This gradebook is finalized. Ask an administrator to unlock it before adding activities." });

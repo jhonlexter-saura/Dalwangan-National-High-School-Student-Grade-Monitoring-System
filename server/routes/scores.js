@@ -6,6 +6,7 @@ const Activity = require("../models/Activity");
 const SubjectAssignment = require("../models/SubjectAssignment");
 const Teacher = require("../models/Teacher");
 const Gradebook = require("../models/Gradebook");
+const Notification = require("../models/Notification");
 const { requireAuthenticatedUser } = require("../middleware/authorization");
 const { lockGradebookForScore } = require("../middleware/gradebookLock");
 const { logAudit } = require("../services/auditLogger");
@@ -153,11 +154,8 @@ router.post("/", requireAuthenticatedUser, lockGradebookForScore, async (req, re
     }
 
     const finalizedGradebook = await Gradebook.exists({
+      subjectAssignment: subjectAssignmentId,
       academicPeriod: activity.academicPeriod,
-      $or: [
-        { class: classId, subjectAssignment: null },
-        { subjectAssignment: subjectAssignmentId },
-      ],
     });
     if (finalizedGradebook) {
       return res.status(409).json({ error: "This gradebook is finalized. Ask an administrator to unlock it before changing scores." });
@@ -222,6 +220,20 @@ router.post("/", requireAuthenticatedUser, lockGradebookForScore, async (req, re
         remarks: remarks || "",
       },
     });
+
+    if (!existingScore || Number(existingScore.score) !== Number(score) || (existingScore.remarks || "") !== (remarks || "")) {
+      try {
+        await Notification.create({
+          recipient: student.user,
+          type: "score_received",
+          title: "New activity score",
+          message: `You received ${Number(score)}/${activity.totalPoints} for ${activity.title} in ${subjectAssignment.subject}.`,
+          link: `/student/grades?assignmentId=${subjectAssignment._id}`,
+        });
+      } catch (notificationError) {
+        console.error("Failed to notify student about score:", notificationError.message);
+      }
+    }
 
     res.status(200).json(savedScore);
   } catch (error) {

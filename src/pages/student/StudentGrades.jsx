@@ -177,23 +177,26 @@ export default function StudentGrades() {
         {assignmentFilter && <Link to="/student/grades" className="text-sm font-semibold text-blue-700 hover:text-blue-900">View all subjects</Link>}
       </header>
 
-      {visibleGradeData.length > 0 && <section className="flex min-w-0 flex-col gap-4 rounded-xl border bg-white p-4 shadow-sm sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
-        <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap">
-          <label className="w-full text-sm font-medium text-gray-700 sm:w-64">School Year
+      {visibleGradeData.length > 0 && <section className="flex min-w-0 flex-col gap-4 rounded-xl border bg-white p-4 shadow-sm md:flex-row md:items-end md:justify-between">
+        <div className="flex min-w-0 flex-1 flex-row gap-4">
+          <label className="min-w-0 flex-1 text-sm font-medium text-gray-700 sm:max-w-64">School Year
             <select value={selectedSchoolYear} onChange={(event) => { setSelectedSchoolYear(event.target.value); setSelectedTerm("all"); }} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 font-normal outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
               {schoolYears.map((year) => <option key={year} value={year}>School Year {year}</option>)}
             </select>
           </label>
-          <label className="w-full text-sm font-medium text-gray-700 sm:w-64">Term
+          <label className="min-w-0 flex-1 text-sm font-medium text-gray-700 sm:max-w-64">Term
             <select value={selectedTerm} onChange={(event) => setSelectedTerm(event.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 font-normal outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
               <option value="all">All Terms</option>
               {availablePeriods.map((period) => <option key={period._id || period.name} value={period.name}>{period.name}{period.status === "active" ? " · Active" : ""}</option>)}
             </select>
           </label>
         </div>
-        <div className="flex w-full flex-col gap-2 sm:ml-auto sm:w-auto sm:flex-row">
-          <button type="button" onClick={() => handleExport("pdf")} disabled={Boolean(exportingFormat) || !rows.length} className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-800 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"><Download size={16} /> {exportingFormat === "pdf" ? "Preparing PDF…" : "Download Report Card PDF"}</button>
-          {googleStatus.available && <button type="button" onClick={handleGoogleDrive} disabled={Boolean(exportingFormat) || !rows.length} className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"><Cloud size={16} /> {exportingFormat === "drive" ? "Saving…" : googleStatus.connected ? "Save PDF to Google Drive" : "Connect Google Drive"}</button>}
+        <div className="flex w-full flex-wrap items-center justify-end gap-2 md:w-auto">
+          <button type="button" onClick={() => handleExport("pdf")} disabled={Boolean(exportingFormat) || !rows.length} className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"><Download size={16} /> {exportingFormat === "pdf" ? "Preparing PDF…" : "Download Report Card PDF"}</button>
+          {googleStatus.available && <>
+            <button type="button" onClick={handleGoogleDrive} disabled={Boolean(exportingFormat) || !rows.length} className={`inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${googleStatus.connected ? "border-gray-300 bg-white text-gray-700 hover:bg-gray-50" : "border-emerald-200 bg-white text-emerald-800 hover:bg-emerald-50"}`}><Cloud size={16} /> {exportingFormat === "drive" ? "Saving…" : googleStatus.connected ? "Save to Drive" : "Connect Google Drive"}</button>
+            {googleStatus.connected && <span className="inline-flex items-center gap-1.5 whitespace-nowrap px-1 text-xs font-medium text-emerald-700" aria-label={`Google Drive connected${googleStatus.email ? ` as ${googleStatus.email}` : ""}`}><span className="h-2 w-2 rounded-full bg-emerald-500" />Connected</span>}
+          </>}
         </div>
       </section>}
 
