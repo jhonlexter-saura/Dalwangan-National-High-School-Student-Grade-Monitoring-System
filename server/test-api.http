@@ -1,0 +1,13 @@
+GET http://localhost:5000/api/classes
+
+
+POST http://localhost:5000/api/classes
+Content-Type: application/json
+
+{
+  "name": "Grade 10",
+  "section": "Rizal",
+  "gradeLevel": 10,
+  "adviser": "Juan Dela Cruz",
+  "schoolYear": "2026-2027"
+}

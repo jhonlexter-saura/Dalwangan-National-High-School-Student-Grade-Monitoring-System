@@ -10,4 +10,4 @@ This project is done by the group Terra_Link from Bukidnon State University Info
     Project Manager - Jay-E G. Tactacon
     Lead Programmer - Jhon Lexter L. Saura
     Database Administrator - Saturnino R. Telamo Jr.
-    Security Analyst - Mark Jim T. Rodriguez 
+    Security Analyst - Mark Jim T. Rodriguez
