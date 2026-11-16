@@ -39,10 +39,10 @@ const INTEGRATIONS = [
   },
   {
     key: "recaptcha",
-    title: "reCAPTCHA v2",
+    title: "reCAPTCHA v3",
     description:
-      "Require checkbox verification before users can log in with an email and password.",
-    detail: "Uses the reCAPTCHA keys configured in the server environment.",
+      "Verify password sign-ins invisibly with a risk score.",
+    detail: "Uses the reCAPTCHA v3 site key and secret configured in the server environment.",
     Icon: ShieldCheck,
   },
   {
@@ -470,7 +470,7 @@ function AdminIntegrations() {
             </article>
 
             <article className={cardClass}>
-              <div className="flex items-start justify-between gap-3"><div className="flex gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-50 text-amber-700"><ShieldCheck size={20} /></span><div><h3 className="font-semibold text-slate-900">reCAPTCHA v2</h3><p className="mt-1 text-sm text-slate-600">Set the public checkbox site key and its private server secret.</p></div></div><ConfigBadge active={Boolean(customConfig.CUSTOM_RECAPTCHA_SECRET_KEY?.configured || customConfig.CUSTOM_VITE_RECAPTCHA_SITE_KEY?.configured)} /></div>
+              <div className="flex items-start justify-between gap-3"><div className="flex gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-50 text-amber-700"><ShieldCheck size={20} /></span><div><h3 className="font-semibold text-slate-900">reCAPTCHA v3</h3><p className="mt-1 text-sm text-slate-600">Set the public v3 site key and its private server secret.</p></div></div><ConfigBadge active={Boolean(customConfig.CUSTOM_RECAPTCHA_SECRET_KEY?.configured || customConfig.CUSTOM_VITE_RECAPTCHA_SITE_KEY?.configured)} /></div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2"><label className="block text-sm font-medium text-slate-700">Site key<input type="text" autoComplete="off" value={draft.recaptchaSiteKey} onChange={(e) => setDraft({ ...draft, recaptchaSiteKey: e.target.value })} placeholder={customConfig.CUSTOM_VITE_RECAPTCHA_SITE_KEY?.configured ? "Saved · enter a replacement" : "Public site key"} className={inputClass} /></label><label className="block text-sm font-medium text-slate-700">Secret key<input type="password" autoComplete="new-password" value={draft.recaptchaSecretKey} onChange={(e) => setDraft({ ...draft, recaptchaSecretKey: e.target.value })} placeholder={customConfig.CUSTOM_RECAPTCHA_SECRET_KEY?.configured ? "Saved securely · enter a replacement" : "Private server key"} className={inputClass} /></label></div>
               <p className="mt-2 text-xs leading-5 text-slate-500">Keys are checked for format; Google verifies the key pair when a user completes the login challenge.</p>
               <ConfigActions busy={savingKey === "recaptcha"} locked={Boolean(savingKey)} configured={Boolean(customConfig.CUSTOM_RECAPTCHA_SECRET_KEY?.configured || customConfig.CUSTOM_VITE_RECAPTCHA_SITE_KEY?.configured)} onSave={() => saveCustom("recaptcha", { CUSTOM_RECAPTCHA_SECRET_KEY: draft.recaptchaSecretKey, CUSTOM_VITE_RECAPTCHA_SITE_KEY: draft.recaptchaSiteKey })} onReset={() => saveCustom("recaptcha", { CUSTOM_RECAPTCHA_SECRET_KEY: "", CUSTOM_VITE_RECAPTCHA_SITE_KEY: "" })} disabled={!draft.recaptchaSiteKey.trim() || !draft.recaptchaSecretKey.trim()} />

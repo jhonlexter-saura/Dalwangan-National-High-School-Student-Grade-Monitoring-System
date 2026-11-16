@@ -129,7 +129,10 @@ async function verifyRecaptcha(captchaToken, remoteIp) {
   if (result.success !== true) {
     console.warn("reCAPTCHA verification returned false:", result["error-codes"]);
   }
-  return result.success === true;
+  return result.success === true
+    && result.action === "login"
+    && typeof result.score === "number"
+    && result.score >= 0.5;
 }
 
 router.post("/login", authRateLimits.passwordLoginIp, accountFailureGuard, async (req, res) => {
@@ -171,7 +174,7 @@ router.post("/login", authRateLimits.passwordLoginIp, accountFailureGuard, async
           reason: "captcha_failed",
         });
         return res.status(403).json({
-          error: "Please complete the reCAPTCHA challenge again.",
+          error: "reCAPTCHA verification failed. Please try again.",
         });
       }
     }
