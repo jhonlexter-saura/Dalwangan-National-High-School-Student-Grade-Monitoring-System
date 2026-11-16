@@ -9,6 +9,7 @@ const Gradebook = require("../models/Gradebook");
 const Notification = require("../models/Notification");
 const { requireAuthenticatedUser } = require("../middleware/authorization");
 const { lockGradebookForScore } = require("../middleware/gradebookLock");
+const { validateScoreInput } = require("../middleware/validation");
 const { logAudit } = require("../services/auditLogger");
 
 const router = express.Router();
@@ -83,7 +84,7 @@ router.get("/assignment/:assignmentId", async (req, res) => {
 });
 
 // CREATE or update a score
-router.post("/", requireAuthenticatedUser, lockGradebookForScore, async (req, res) => {
+router.post("/", requireAuthenticatedUser, lockGradebookForScore, validateScoreInput, async (req, res) => {
   try {
     const {
       studentId,
@@ -147,12 +148,6 @@ router.post("/", requireAuthenticatedUser, lockGradebookForScore, async (req, re
       }
     }
 
-    if (Number(score) < 0 || Number(score) > activity.totalPoints) {
-      return res.status(400).json({
-        error: `Score must be between 0 and ${activity.totalPoints}`,
-      });
-    }
-
     const finalizedGradebook = await Gradebook.exists({
       subjectAssignment: subjectAssignmentId,
       academicPeriod: activity.academicPeriod,
@@ -176,7 +171,7 @@ router.post("/", requireAuthenticatedUser, lockGradebookForScore, async (req, re
         class: classId,
         subjectAssignment: subjectAssignmentId,
         activity: activityId,
-        score: Number(score),
+        score: req.validatedScore,
         remarks: remarks || "",
       },
       {

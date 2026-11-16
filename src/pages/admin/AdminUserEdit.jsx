@@ -23,6 +23,8 @@ const roleLabels = {
   admin: "Administrator",
 };
 
+const STUDENT_ID_MAX_LENGTH = 12;
+
 const emptyProfile = {
   name: "",
   email: "",
@@ -98,7 +100,10 @@ export default function AdminUserEdit() {
 
   const handleChange = (event) => {
     const { name, value } = event.target;
-    setFormData((current) => ({ ...current, [name]: value }));
+    setFormData((current) => ({
+      ...current,
+      [name]: name === "studentId" ? value.slice(0, STUDENT_ID_MAX_LENGTH) : value,
+    }));
   };
 
   const handleCancel = () => {
@@ -115,6 +120,10 @@ export default function AdminUserEdit() {
     }
 
     if (role === "student") {
+      if (formData.studentId.trim().length > STUDENT_ID_MAX_LENGTH) {
+        setError(`LRN must be ${STUDENT_ID_MAX_LENGTH} characters or fewer.`);
+        return;
+      }
       if (
         !formData.studentId.trim() ||
         !formData.gradeLevel ||
@@ -249,6 +258,8 @@ export default function AdminUserEdit() {
                   name="studentId"
                   value={formData.studentId}
                   onChange={handleChange}
+                  maxLength={STUDENT_ID_MAX_LENGTH}
+                  inputMode="numeric"
                   required
                   disabled={saving}
                 />

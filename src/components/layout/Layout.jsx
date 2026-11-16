@@ -24,10 +24,9 @@ function Layout() {
           <main className="flex-1 p-4 sm:p-6">
             <Outlet />
           </main>
+          <Footer />
         </div>
       </div>
-
-      <Footer />
     </div>
   );
 }

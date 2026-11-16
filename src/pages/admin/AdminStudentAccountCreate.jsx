@@ -4,6 +4,7 @@ import { createUser } from "../../services/schoolDataService";
 import { useToast } from "../../context/ToastContext";
 
 const EMPTY_FORM = { studentId: "", name: "", email: "", password: "" };
+const STUDENT_ID_MAX_LENGTH = 12;
 
 export default function AdminStudentAccountCreate() {
   const { showToast } = useToast();
@@ -13,7 +14,11 @@ export default function AdminStudentAccountCreate() {
   const [saving, setSaving] = useState(false);
 
   const handleChange = (event) => {
-    setFormData((current) => ({ ...current, [event.target.name]: event.target.value }));
+    const { name, value } = event.target;
+    setFormData((current) => ({
+      ...current,
+      [name]: name === "studentId" ? value.slice(0, STUDENT_ID_MAX_LENGTH) : value,
+    }));
   };
 
   const handleSubmit = async (event) => {
@@ -22,6 +27,10 @@ export default function AdminStudentAccountCreate() {
 
     if (!formData.studentId.trim() || !formData.name.trim() || !formData.email.trim() || !formData.password) {
       setError("Enter the LRN, student name, email address, and temporary password.");
+      return;
+    }
+    if (formData.studentId.trim().length > STUDENT_ID_MAX_LENGTH) {
+      setError(`LRN must be ${STUDENT_ID_MAX_LENGTH} characters or fewer.`);
       return;
     }
     if (formData.password.length < 6) {
@@ -65,7 +74,7 @@ export default function AdminStudentAccountCreate() {
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <label htmlFor="studentId" className="mb-1 block text-sm font-medium text-gray-700">LRN <span className="text-red-600">*</span></label>
-            <input id="studentId" type="text" name="studentId" value={formData.studentId} onChange={handleChange} placeholder="Enter learner reference number" autoComplete="off" required className={inputClass} />
+            <input id="studentId" type="text" name="studentId" value={formData.studentId} onChange={handleChange} maxLength={STUDENT_ID_MAX_LENGTH} inputMode="numeric" placeholder="Enter learner reference number" autoComplete="off" required className={inputClass} />
           </div>
 
           <div>
