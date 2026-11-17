@@ -16,6 +16,7 @@ import {
   ChevronUp,
   Lock,
   LockOpen,
+  Clock,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useToast } from "../../context/ToastContext";
@@ -85,7 +86,32 @@ function AdminIntegrations() {
   });
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState("");
-  const [accessToken, setAccessToken] = useState(() => sessionStorage.getItem("dnhs_integration_access") || "");
+  const [sessionExpiresAt, setSessionExpiresAt] = useState(() => {
+    const token = sessionStorage.getItem("dnhs_integration_access");
+    const stored = sessionStorage.getItem("dnhs_integration_access_expires");
+    if (!token || !stored) {
+      sessionStorage.removeItem("dnhs_integration_access");
+      sessionStorage.removeItem("dnhs_integration_access_expires");
+      return null;
+    }
+    const timestamp = Number(stored);
+    if (isNaN(timestamp) || Date.now() >= timestamp) {
+      sessionStorage.removeItem("dnhs_integration_access");
+      sessionStorage.removeItem("dnhs_integration_access_expires");
+      return null;
+    }
+    return timestamp;
+  });
+  const [accessToken, setAccessToken] = useState(() => {
+    const stored = sessionStorage.getItem("dnhs_integration_access_expires");
+    if (!stored || Date.now() >= Number(stored)) {
+      sessionStorage.removeItem("dnhs_integration_access");
+      sessionStorage.removeItem("dnhs_integration_access_expires");
+      return "";
+    }
+    return sessionStorage.getItem("dnhs_integration_access") || "";
+  });
+  const [secondsRemaining, setSecondsRemaining] = useState(null);
   const [accessChallengeId, setAccessChallengeId] = useState("");
   const [accessEmail, setAccessEmail] = useState("");
   const [accessCode, setAccessCode] = useState("");
@@ -112,6 +138,31 @@ function AdminIntegrations() {
   });
   const [expandedConfig, setExpandedConfig] = useState({});
   const [unlockedConfigs, setUnlockedConfigs] = useState({});
+
+  useEffect(() => {
+    if (!accessToken || !sessionExpiresAt) {
+      setSecondsRemaining(null);
+      return undefined;
+    }
+
+    function checkSession() {
+      const remaining = Math.max(0, Math.floor((sessionExpiresAt - Date.now()) / 1000));
+      setSecondsRemaining(remaining);
+      if (remaining <= 0) {
+        sessionStorage.removeItem("dnhs_integration_access");
+        sessionStorage.removeItem("dnhs_integration_access_expires");
+        setAccessToken("");
+        setSessionExpiresAt(null);
+        setUnlockedConfigs({});
+        setExpandedConfig({});
+        setSecurityError("Your 15-minute integration session has expired. Verify with the super user again to continue.");
+      }
+    }
+
+    checkSession();
+    const interval = setInterval(checkSession, 1000);
+    return () => clearInterval(interval);
+  }, [accessToken, sessionExpiresAt]);
 
   async function handleConfigureClick(group, integrationKey) {
     if (savingKey || approvalRequesting || Boolean(approval)) return;
@@ -148,7 +199,11 @@ function AdminIntegrations() {
     } catch (err) {
       if (err.status === 401 || err.status === 403) {
         sessionStorage.removeItem("dnhs_integration_access");
+        sessionStorage.removeItem("dnhs_integration_access_expires");
         setAccessToken("");
+        setSessionExpiresAt(null);
+        setUnlockedConfigs({});
+        setExpandedConfig({});
         setSecurityError(err.message || "Integration access expired. Verify with the super user again.");
       } else {
         setError(err.message || "Unable to load integration settings.");
@@ -163,7 +218,11 @@ function AdminIntegrations() {
     catch (err) {
       if (err.status === 401 || err.status === 403) {
         sessionStorage.removeItem("dnhs_integration_access");
+        sessionStorage.removeItem("dnhs_integration_access_expires");
         setAccessToken("");
+        setSessionExpiresAt(null);
+        setUnlockedConfigs({});
+        setExpandedConfig({});
         setSecurityError(err.message || "Integration access expired. Verify with the super user again.");
       }
       setGoogleStatus({ available: false, connected: false, email: "" });
@@ -212,8 +271,13 @@ function AdminIntegrations() {
         showToast(result.message, "success");
       } else {
         const result = await verifyIntegrationAccessCode(accessChallengeId, accessCode);
+        const expiresTimestamp = result.expiresAt
+          ? new Date(result.expiresAt).getTime()
+          : Date.now() + 15 * 60 * 1000;
         sessionStorage.setItem("dnhs_integration_access", result.accessToken);
+        sessionStorage.setItem("dnhs_integration_access_expires", String(expiresTimestamp));
         setAccessToken(result.accessToken);
+        setSessionExpiresAt(expiresTimestamp);
         setAccessChallengeId("");
         setAccessCode("");
       }
@@ -529,15 +593,34 @@ function AdminIntegrations() {
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={loadSettings}
-            disabled={loading || actionLocked}
-            className="inline-flex items-center justify-center gap-2 self-start rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50 sm:self-auto"
-          >
-            <RefreshCw size={16} />
-            Refresh
-          </button>
+          <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+            {secondsRemaining !== null && secondsRemaining > 0 && (
+              <div
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold ${
+                  secondsRemaining < 120
+                    ? "border-amber-300 bg-amber-50 text-amber-800 animate-pulse"
+                    : "border-slate-300 bg-white text-slate-700 shadow-sm"
+                }`}
+                title="Time remaining before Super-User MFA is required again"
+              >
+                <Clock size={14} className={secondsRemaining < 120 ? "text-amber-600" : "text-blue-600"} />
+                <span>
+                  Session: {Math.floor(secondsRemaining / 60)}:
+                  {String(secondsRemaining % 60).padStart(2, "0")}
+                </span>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={loadSettings}
+              disabled={loading || actionLocked}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+            >
+              <RefreshCw size={16} />
+              Refresh
+            </button>
+          </div>
         </header>
 
         {error && (

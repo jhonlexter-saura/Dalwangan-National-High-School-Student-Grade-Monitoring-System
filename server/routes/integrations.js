@@ -189,6 +189,7 @@ router.get("/public", async (req, res) => {
 
 const SECURITY_RECORD_LIFETIME_MS = 24 * 60 * 60 * 1000;
 const SECURITY_CODE_LIFETIME_MS = 5 * 60 * 1000;
+const INTEGRATION_SESSION_LIFETIME_MS = 15 * 60 * 1000;
 
 async function findConfiguredSuperUser() {
   const configuredEmail = process.env.SUPER_USER_EMAIL?.trim().toLowerCase();
@@ -382,14 +383,20 @@ router.post("/security/verify-access", authRateLimits.integrationOtpVerifyIp, as
       return res.status(401).json({ error: "The verification code is invalid or expired." });
     }
 
+    await IntegrationSecurityGrant.deleteMany({
+      adminId: grant.adminId,
+      purpose: "access-session",
+    });
+
     const accessToken = crypto.randomBytes(32).toString("hex");
+    const sessionExpiresAt = new Date(Date.now() + INTEGRATION_SESSION_LIFETIME_MS);
     const session = await IntegrationSecurityGrant.create({
       adminId: grant.adminId,
       superUserId: grant.superUserId,
       superUserEmail: grant.superUserEmail,
       purpose: "access-session",
       accessTokenHash: hashValue(accessToken),
-      expiresAt: grant.expiresAt,
+      expiresAt: sessionExpiresAt,
     });
 
     await logAudit({
@@ -398,14 +405,42 @@ router.post("/security/verify-access", authRateLimits.integrationOtpVerifyIp, as
       category: "system",
       target: { entityType: "IntegrationSecurity", entityId: String(session._id), name: "Admin integration access" },
       description: "Verified super-user code and granted temporary integration access.",
-      details: { superUserId: String(grant.superUserId), expiresAt: grant.expiresAt },
+      details: { superUserId: String(grant.superUserId), expiresAt: sessionExpiresAt, sessionMinutes: 15 },
     });
 
     res.set("Cache-Control", "no-store");
-    return res.json({ success: true, accessToken, expiresAt: grant.expiresAt });
+    return res.json({
+      success: true,
+      accessToken,
+      expiresAt: sessionExpiresAt,
+      expiresInSeconds: INTEGRATION_SESSION_LIFETIME_MS / 1000,
+    });
   } catch (error) {
     console.error("Integration access verification error:", error);
     return res.status(500).json({ error: "Unable to verify integration access." });
+  }
+});
+
+router.post("/security/revoke-access", async (req, res) => {
+  try {
+    const result = await IntegrationSecurityGrant.deleteMany({
+      adminId: req.authenticatedUser._id,
+      purpose: "access-session",
+    });
+
+    await logAudit({
+      req,
+      action: "INTEGRATION_ACCESS_REVOKED",
+      category: "system",
+      target: { entityType: "IntegrationSecurity", name: "Admin integration access" },
+      description: "Revoked active integration access session upon logout or session exit.",
+      details: { revokedCount: result.deletedCount },
+    });
+
+    return res.json({ success: true, message: "Integration access revoked." });
+  } catch (error) {
+    console.error("Integration access revocation error:", error);
+    return res.status(500).json({ error: "Unable to revoke integration access." });
   }
 });
 

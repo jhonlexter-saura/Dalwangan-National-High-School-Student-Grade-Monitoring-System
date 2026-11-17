@@ -399,6 +399,12 @@ export function verifyIntegrationAccessCode(challengeId, code) {
   });
 }
 
+export function revokeIntegrationAccess() {
+  return request("/integrations/security/revoke-access", {
+    method: "POST",
+  }).catch(() => {});
+}
+
 export function requestIntegrationChangeApproval(action, payload = {}) {
   return request("/integrations/security/request-approval", {
     method: "POST",

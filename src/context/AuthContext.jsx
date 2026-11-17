@@ -11,6 +11,7 @@ import {
   loginWithGoogle as googleLoginRequest,
   getPasskeyLoginOptions,
   verifyPasskeyLogin,
+  revokeIntegrationAccess,
 } from "../services/schoolDataService";
 import { startAuthentication } from "@simplewebauthn/browser";
 
@@ -48,6 +49,8 @@ export function AuthProvider({ children }) {
   }, []);
 
   const establishSession = useCallback((result) => {
+    sessionStorage.removeItem("dnhs_integration_access");
+    sessionStorage.removeItem("dnhs_integration_access_expires");
     setUser(result.user);
     localStorage.setItem("dnhs_token", result.token);
     localStorage.setItem("dnhs_user", JSON.stringify(result.user));
@@ -113,6 +116,9 @@ export function AuthProvider({ children }) {
     setUser(null);
     localStorage.removeItem("dnhs_user");
     localStorage.removeItem("dnhs_token");
+    sessionStorage.removeItem("dnhs_integration_access");
+    sessionStorage.removeItem("dnhs_integration_access_expires");
+    void revokeIntegrationAccess();
   }, []);
 
   return (

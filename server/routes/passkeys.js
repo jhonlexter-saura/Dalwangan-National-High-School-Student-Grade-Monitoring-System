@@ -10,6 +10,7 @@ const {
 const User = require("../models/User");
 const Passkey = require("../models/Passkey");
 const PasskeyChallenge = require("../models/PasskeyChallenge");
+const IntegrationSecurityGrant = require("../models/IntegrationSecurityGrant");
 const { createAccessToken, isAuthenticationConfigured, requireAdmin } = require("../middleware/authorization");
 const { logAudit } = require("../services/auditLogger");
 const {
@@ -309,6 +310,10 @@ router.post("/login/verify", authRateLimits.passkeyVerifyIp, async (req, res) =>
       details: { role: user.role, loginMethod: "passkey" },
     });
     clearAccountFailures(user.email);
+
+    if (user.role === "admin") {
+      await IntegrationSecurityGrant.deleteMany({ adminId: user._id, purpose: "access-session" });
+    }
 
     return res.json({ success: true, user: safeUser(user), token: createAccessToken(user._id) });
   } catch (error) {

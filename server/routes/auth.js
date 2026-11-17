@@ -8,6 +8,7 @@ const { OAuth2Client } = require("google-auth-library");
 const googleClient = new OAuth2Client();
 
 const User = require("../models/User");
+const IntegrationSecurityGrant = require("../models/IntegrationSecurityGrant");
 const {
   createAccessToken,
   isAuthenticationConfigured,
@@ -228,6 +229,10 @@ router.post("/login", authRateLimits.passwordLoginIp, accountFailureGuard, async
     await logSuccessfulLogin(req, user, "password");
     clearAccountFailures(normalizedEmail);
 
+    if (user.role === "admin") {
+      await IntegrationSecurityGrant.deleteMany({ adminId: user._id, purpose: "access-session" });
+    }
+
     return res.json({
       success: true,
       user: safeUser(user),
@@ -322,6 +327,10 @@ router.post("/google", authRateLimits.googleLoginIp, async (req, res) => {
     }
 
     await logSuccessfulLogin(req, user, "Google");
+
+    if (user.role === "admin") {
+      await IntegrationSecurityGrant.deleteMany({ adminId: user._id, purpose: "access-session" });
+    }
 
     return res.json({
       success: true,
