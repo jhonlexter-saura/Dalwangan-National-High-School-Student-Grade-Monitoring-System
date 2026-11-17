@@ -12,6 +12,9 @@ import {
   FileSpreadsheet,
   FileText,
   Cloud,
+  ChevronDown,
+  ChevronUp,
+  Settings2,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useToast } from "../../context/ToastContext";
@@ -39,6 +42,7 @@ const INTEGRATIONS = [
       "Allow users to sign in with Google when the email matches an existing active DNHS-SGMS account.",
     detail: "Uses the Google OAuth Client ID configured on the server.",
     Icon: Globe,
+    customGroup: "google",
   },
   {
     key: "recaptcha",
@@ -47,6 +51,7 @@ const INTEGRATIONS = [
       "Verify password sign-ins invisibly with a risk score.",
     detail: "Uses the reCAPTCHA v3 site key and secret configured in the server environment.",
     Icon: ShieldCheck,
+    customGroup: "recaptcha",
   },
   {
     key: "emailMailer",
@@ -55,6 +60,7 @@ const INTEGRATIONS = [
       "Send password reset links to students and teachers by email.",
     detail: "Uses the Gmail mailer credentials configured on the server.",
     Icon: Mail,
+    customGroup: "email",
   },
   {
     key: "adminPasskeys",
@@ -102,6 +108,11 @@ function AdminIntegrations() {
     recaptchaSiteKey: "",
     recaptchaSecretKey: "",
   });
+  const [expandedConfig, setExpandedConfig] = useState({});
+
+  function toggleConfigPanel(key) {
+    setExpandedConfig((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
 
   async function loadSettings() {
     setLoading(true);
@@ -336,6 +347,84 @@ function AdminIntegrations() {
   const cardClass = "rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6";
   const actionLocked = Boolean(savingKey) || approvalRequesting || Boolean(approval);
 
+  /* ── Custom config panel renderers, keyed by integration customGroup ── */
+
+  function renderGoogleConfig() {
+    return (
+      <div className="space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-50 text-green-700"><Globe size={20} /></span>
+            <div>
+              <h4 className="font-semibold text-slate-900">Google OAuth credentials</h4>
+              <p className="mt-1 text-sm text-slate-600">Set the OAuth client used for sign-in and Drive exports.</p>
+            </div>
+          </div>
+          <ConfigBadge active={Boolean(customConfig.CUSTOM_GOOGLE_CLIENT_ID?.configured || customConfig.CUSTOM_VITE_GOOGLE_CLIENT_ID?.configured || customConfig.CUSTOM_GOOGLE_CLIENT_SECRET?.configured)} />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block text-sm font-medium text-slate-700">Google OAuth Client ID<input type="text" autoComplete="off" value={draft.googleClientId} onChange={(e) => setDraft({ ...draft, googleClientId: e.target.value })} placeholder={customConfig.CUSTOM_GOOGLE_CLIENT_ID?.configured || customConfig.CUSTOM_VITE_GOOGLE_CLIENT_ID?.configured ? "Saved · enter a replacement" : "…apps.googleusercontent.com"} className={inputClass} /></label>
+          <label className="block text-sm font-medium text-slate-700">Google OAuth Client Secret<input type="password" autoComplete="new-password" value={draft.googleClientSecret} onChange={(e) => setDraft({ ...draft, googleClientSecret: e.target.value })} placeholder={customConfig.CUSTOM_GOOGLE_CLIENT_SECRET?.configured ? "Saved securely · enter a replacement" : "Server-side client secret"} className={inputClass} /></label>
+          <label className="block text-sm font-medium text-slate-700 sm:col-span-2">Google token encryption key<input type="password" autoComplete="new-password" value={draft.googleTokenKey} onChange={(e) => setDraft({ ...draft, googleTokenKey: e.target.value })} placeholder={customConfig.CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY?.configured ? "Saved securely · enter a replacement" : "At least 32 characters · keep this key stable"} className={inputClass} /></label>
+        </div>
+        <p className="text-xs leading-5 text-slate-500">The client ID is public. The client secret and encryption key stay on the server and are never shown after saving. Keep the encryption key stable so saved Google connections remain usable. Configure the OAuth redirect URL as your server's /api/v1/integrations/google/callback address.</p>
+        <ConfigActions busy={savingKey === "google"} locked={actionLocked} configured={Boolean(customConfig.CUSTOM_GOOGLE_CLIENT_ID?.configured || customConfig.CUSTOM_VITE_GOOGLE_CLIENT_ID?.configured || customConfig.CUSTOM_GOOGLE_CLIENT_SECRET?.configured || customConfig.CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY?.configured)} onSave={() => saveCustom("google", { CUSTOM_GOOGLE_CLIENT_ID: draft.googleClientId, CUSTOM_VITE_GOOGLE_CLIENT_ID: draft.googleClientId, CUSTOM_GOOGLE_CLIENT_SECRET: draft.googleClientSecret, CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY: draft.googleTokenKey })} onReset={() => saveCustom("google", { CUSTOM_GOOGLE_CLIENT_ID: "", CUSTOM_VITE_GOOGLE_CLIENT_ID: "", CUSTOM_GOOGLE_CLIENT_SECRET: "", CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY: "" })} disabled={!draft.googleClientId.trim() || !draft.googleClientSecret.trim() || draft.googleTokenKey.trim().length < 32} />
+      </div>
+    );
+  }
+
+  function renderRecaptchaConfig() {
+    return (
+      <div className="space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-50 text-amber-700"><ShieldCheck size={20} /></span>
+            <div>
+              <h4 className="font-semibold text-slate-900">reCAPTCHA v3 keys</h4>
+              <p className="mt-1 text-sm text-slate-600">Set the public v3 site key and its private server secret.</p>
+            </div>
+          </div>
+          <ConfigBadge active={Boolean(customConfig.CUSTOM_RECAPTCHA_SECRET_KEY?.configured || customConfig.CUSTOM_VITE_RECAPTCHA_SITE_KEY?.configured)} />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block text-sm font-medium text-slate-700">Site key<input type="text" autoComplete="off" value={draft.recaptchaSiteKey} onChange={(e) => setDraft({ ...draft, recaptchaSiteKey: e.target.value })} placeholder={customConfig.CUSTOM_VITE_RECAPTCHA_SITE_KEY?.configured ? "Saved · enter a replacement" : "Public site key"} className={inputClass} /></label>
+          <label className="block text-sm font-medium text-slate-700">Secret key<input type="password" autoComplete="new-password" value={draft.recaptchaSecretKey} onChange={(e) => setDraft({ ...draft, recaptchaSecretKey: e.target.value })} placeholder={customConfig.CUSTOM_RECAPTCHA_SECRET_KEY?.configured ? "Saved securely · enter a replacement" : "Private server key"} className={inputClass} /></label>
+        </div>
+        <p className="text-xs leading-5 text-slate-500">Keys are checked for format; Google verifies the key pair when a user completes the login challenge.</p>
+        <ConfigActions busy={savingKey === "recaptcha"} locked={actionLocked} configured={Boolean(customConfig.CUSTOM_RECAPTCHA_SECRET_KEY?.configured || customConfig.CUSTOM_VITE_RECAPTCHA_SITE_KEY?.configured)} onSave={() => saveCustom("recaptcha", { CUSTOM_RECAPTCHA_SECRET_KEY: draft.recaptchaSecretKey, CUSTOM_VITE_RECAPTCHA_SITE_KEY: draft.recaptchaSiteKey })} onReset={() => saveCustom("recaptcha", { CUSTOM_RECAPTCHA_SECRET_KEY: "", CUSTOM_VITE_RECAPTCHA_SITE_KEY: "" })} disabled={!draft.recaptchaSiteKey.trim() || !draft.recaptchaSecretKey.trim()} />
+      </div>
+    );
+  }
+
+  function renderEmailConfig() {
+    return (
+      <div className="space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-rose-50 text-rose-700"><Mail size={20} /></span>
+            <div>
+              <h4 className="font-semibold text-slate-900">Email mailer credentials</h4>
+              <p className="mt-1 text-sm text-slate-600">Use a custom Gmail account to send password reset links.</p>
+            </div>
+          </div>
+          <ConfigBadge active={Boolean(customConfig.CUSTOM_EMAIL_USER?.configured || customConfig.CUSTOM_EMAIL_APP_PASSWORD?.configured)} />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block text-sm font-medium text-slate-700">Gmail account<input type="email" autoComplete="off" value={draft.emailUser} onChange={(e) => setDraft({ ...draft, emailUser: e.target.value })} placeholder={customConfig.CUSTOM_EMAIL_USER?.configured ? "Saved · enter a replacement" : "name@gmail.com"} className={inputClass} /></label>
+          <label className="block text-sm font-medium text-slate-700">Gmail app password<input type="password" autoComplete="new-password" value={draft.emailPassword} onChange={(e) => setDraft({ ...draft, emailPassword: e.target.value })} placeholder={customConfig.CUSTOM_EMAIL_APP_PASSWORD?.configured ? "Saved securely · enter a replacement" : "16-character app password"} className={inputClass} /></label>
+        </div>
+        <p className="text-xs leading-5 text-slate-500">Credentials are checked with Gmail before saving. Blank fields keep the existing value; use the reset button to remove both custom overrides.</p>
+        <ConfigActions busy={savingKey === "email"} locked={actionLocked} configured={Boolean(customConfig.CUSTOM_EMAIL_USER?.configured || customConfig.CUSTOM_EMAIL_APP_PASSWORD?.configured)} onSave={() => saveCustom("email", { CUSTOM_EMAIL_USER: draft.emailUser, CUSTOM_EMAIL_APP_PASSWORD: draft.emailPassword })} onReset={() => saveCustom("email", { CUSTOM_EMAIL_USER: "", CUSTOM_EMAIL_APP_PASSWORD: "" })} disabled={!draft.emailUser.trim() || !draft.emailPassword.trim()} />
+      </div>
+    );
+  }
+
+  const customConfigRenderers = {
+    google: renderGoogleConfig,
+    recaptcha: renderRecaptchaConfig,
+    email: renderEmailConfig,
+  };
+
   if (!accessToken) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
@@ -409,6 +498,20 @@ function AdminIntegrations() {
           </div>
         )}
 
+        {customWarning && (
+          <div
+            role="alert"
+            className="flex items-start gap-3 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-800 shadow-sm"
+          >
+            <AlertCircle size={20} className="mt-0.5 shrink-0 text-red-600" />
+            <div className="space-y-1">
+              <p className="font-semibold text-red-900">Credential Verification Failed</p>
+              <p className="text-red-700">{customWarning}</p>
+              <p className="text-xs text-red-600">The provided credentials could not be verified by the service (Google / Mailer) and were NOT saved. Existing settings remain unchanged.</p>
+            </div>
+          </div>
+        )}
+
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
@@ -419,89 +522,121 @@ function AdminIntegrations() {
                 Connected technologies
               </h2>
               <p className="text-sm text-slate-500">
-                Manage service settings and account security options.
+                Manage service settings, account security options, and their custom credentials.
               </p>
             </div>
           </div>
 
           <div className="mt-5 divide-y divide-slate-100">
-            {INTEGRATIONS.map(({ key, title, description, detail, Icon, available, managementPath }) => {
+            {INTEGRATIONS.map(({ key, title, description, detail, Icon, available, managementPath, customGroup }) => {
               const enabled = available || settings[key];
               const saving = savingKey === key;
+              const isExpanded = Boolean(expandedConfig[key]);
+              const hasCustomPanel = Boolean(customGroup && customConfigRenderers[customGroup]);
 
               return (
                 <article
                   key={key}
-                  className="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between"
+                  className="py-5"
                 >
-                  <div className="flex min-w-0 gap-4">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
-                      <Icon size={22} />
-                    </div>
-
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="font-semibold text-slate-900">
-                          {title}
-                        </h3>
-                        <span
-                          className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-                            key === "emailMailer"
-                              ? "bg-blue-100 text-blue-800"
-                              : enabled
-                              ? "bg-green-100 text-green-800"
-                              : "bg-slate-100 text-slate-600"
-                          }`}
-                        >
-                          {key === "emailMailer" ? "Always On" : available ? "Available" : enabled ? "Enabled" : "Disabled"}
-                        </span>
+                  {/* ── Main row: info + toggle ── */}
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 gap-4">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
+                        <Icon size={22} />
                       </div>
 
-                      <p className="mt-1 text-sm leading-6 text-slate-600">
-                        {description}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        {detail}
-                      </p>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-semibold text-slate-900">
+                            {title}
+                          </h3>
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                              key === "emailMailer"
+                                ? "bg-blue-100 text-blue-800"
+                                : enabled
+                                ? "bg-green-100 text-green-800"
+                                : "bg-slate-100 text-slate-600"
+                            }`}
+                          >
+                            {key === "emailMailer" ? "Always On" : available ? "Available" : enabled ? "Enabled" : "Disabled"}
+                          </span>
+                        </div>
+
+                        <p className="mt-1 text-sm leading-6 text-slate-600">
+                          {description}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {detail}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex shrink-0 items-center gap-2">
+                      {hasCustomPanel && (
+                        <button
+                          type="button"
+                          onClick={() => toggleConfigPanel(key)}
+                          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                            isExpanded
+                              ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                              : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
+                          }`}
+                          aria-expanded={isExpanded}
+                          title="Configure custom credentials"
+                        >
+                          <Settings2 size={15} />
+                          <span className="hidden sm:inline">Configure</span>
+                          {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                        </button>
+                      )}
+
+                      {managementPath ? (
+                        <Link to={managementPath} className="inline-flex shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-100">Manage passkeys</Link>
+                      ) : key === "emailMailer" ? (
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={true}
+                          aria-label="Email Mailer is permanently enabled and unselectable"
+                          disabled={true}
+                          tabIndex={-1}
+                          title="Email Mailer is permanently enabled for password recovery and cannot be toggled."
+                          className="relative inline-flex h-7 w-12 shrink-0 cursor-not-allowed select-none items-center rounded-full bg-blue-700/60 opacity-60 pointer-events-none transition-colors"
+                        >
+                          <span className="inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform translate-x-6" />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={Boolean(enabled)}
+                          aria-label={`${enabled ? "Disable" : "Enable"} ${title}`}
+                          disabled={loading || actionLocked}
+                          onClick={() => handleToggle(key)}
+                          className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                            enabled ? "bg-blue-700" : "bg-slate-300"
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                              enabled ? "translate-x-6" : "translate-x-1"
+                            }`}
+                          />
+                          {saving && (
+                            <span className="sr-only">Saving setting</span>
+                          )}
+                        </button>
+                      )}
                     </div>
                   </div>
 
-                  {managementPath ? (
-                    <Link to={managementPath} className="inline-flex shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-100">Manage passkeys</Link>
-                  ) : key === "emailMailer" ? (
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={true}
-                      aria-label="Email Mailer is permanently enabled and unselectable"
-                      disabled={true}
-                      tabIndex={-1}
-                      title="Email Mailer is permanently enabled for password recovery and cannot be toggled."
-                      className="relative inline-flex h-7 w-12 shrink-0 cursor-not-allowed select-none items-center rounded-full bg-blue-700/60 opacity-60 pointer-events-none transition-colors"
-                    >
-                      <span className="inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform translate-x-6" />
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={Boolean(enabled)}
-                      aria-label={`${enabled ? "Disable" : "Enable"} ${title}`}
-                      disabled={loading || actionLocked}
-                      onClick={() => handleToggle(key)}
-                      className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                        enabled ? "bg-blue-700" : "bg-slate-300"
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
-                          enabled ? "translate-x-6" : "translate-x-1"
-                        }`}
-                      />
-                      {saving && (
-                        <span className="sr-only">Saving setting</span>
-                      )}
-                    </button>
+                  {/* ── Collapsible custom config panel ── */}
+                  {hasCustomPanel && isExpanded && (
+                    <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5">
+                      {customConfigRenderers[customGroup]()}
+                    </div>
                   )}
                 </article>
               );
@@ -513,6 +648,24 @@ function AdminIntegrations() {
               Loading integration settings…
             </p>
           )}
+        </section>
+
+        {/* ── Token signing secret — standalone since it's not tied to a specific toggle ── */}
+        <section className={cardClass}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-50 text-violet-700"><KeyRound size={20} /></span>
+              <div>
+                <p className="text-sm font-medium text-blue-700">Security</p>
+                <h2 className="mt-1 text-xl font-bold text-slate-900">Token signing secret</h2>
+                <p className="mt-1 text-sm text-slate-600">Signs login tokens used to protect administrator and user sessions.</p>
+              </div>
+            </div>
+            <ConfigBadge active={Boolean(customConfig.CUSTOM_AUTH_TOKEN_SECRET?.configured)} />
+          </div>
+          <label className="mt-4 block text-sm font-medium text-slate-700">Custom secret<input type="password" autoComplete="new-password" value={draft.tokenSecret} onChange={(e) => setDraft({ ...draft, tokenSecret: e.target.value })} placeholder={customConfig.CUSTOM_AUTH_TOKEN_SECRET?.configured ? "Saved securely · enter a replacement" : "Enter at least 32 characters"} className={inputClass} /></label>
+          <p className="mt-2 text-xs leading-5 text-amber-800">Requires at least 32 characters and a server restart. Existing sessions will need to sign in again after the new secret takes effect.</p>
+          <ConfigActions busy={savingKey === "token"} locked={actionLocked} configured={Boolean(customConfig.CUSTOM_AUTH_TOKEN_SECRET?.configured)} onSave={() => saveCustom("token", { CUSTOM_AUTH_TOKEN_SECRET: draft.tokenSecret })} onReset={() => saveCustom("token", { CUSTOM_AUTH_TOKEN_SECRET: "" })} disabled={!draft.tokenSecret.trim()} />
         </section>
 
         <section className={cardClass}>
@@ -555,60 +708,6 @@ function AdminIntegrations() {
                 </div>
               </article>
             ))}
-          </div>
-        </section>
-
-        <section className="space-y-4">
-          <div>
-            <p className="text-sm font-medium text-blue-700">Bring your own credentials</p>
-            <h2 className="mt-1 text-xl font-bold text-slate-900">Custom configuration</h2>
-            <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
-              Add a custom value to override the existing server or frontend setting. Leave an override empty by choosing “Use existing default.” Secret values are stored in the matching environment file and are never shown after saving.
-            </p>
-          </div>
-
-          {customWarning && (
-            <div
-              role="alert"
-              className="flex items-start gap-3 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-800 shadow-sm"
-            >
-              <AlertCircle size={20} className="mt-0.5 shrink-0 text-red-600" />
-              <div className="space-y-1">
-                <p className="font-semibold text-red-900">Credential Verification Failed</p>
-                <p className="text-red-700">{customWarning}</p>
-                <p className="text-xs text-red-600">The provided credentials could not be verified by the service (Google / Mailer) and were NOT saved. Existing settings remain unchanged.</p>
-              </div>
-            </div>
-          )}
-
-          <div className="grid gap-4 xl:grid-cols-2">
-            <article className={cardClass}>
-              <div className="flex items-start justify-between gap-3"><div className="flex gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-50 text-violet-700"><KeyRound size={20} /></span><div><h3 className="font-semibold text-slate-900">Token signing secret</h3><p className="mt-1 text-sm text-slate-600">Signs login tokens used to protect administrator and user sessions.</p></div></div><ConfigBadge active={Boolean(customConfig.CUSTOM_AUTH_TOKEN_SECRET?.configured)} /></div>
-              <label className="mt-4 block text-sm font-medium text-slate-700">Custom secret<input type="password" autoComplete="new-password" value={draft.tokenSecret} onChange={(e) => setDraft({ ...draft, tokenSecret: e.target.value })} placeholder={customConfig.CUSTOM_AUTH_TOKEN_SECRET?.configured ? "Saved securely · enter a replacement" : "Enter at least 32 characters"} className={inputClass} /></label>
-              <p className="mt-2 text-xs leading-5 text-amber-800">Requires at least 32 characters and a server restart. Existing sessions will need to sign in again after the new secret takes effect.</p>
-              <ConfigActions busy={savingKey === "token"} locked={actionLocked} configured={Boolean(customConfig.CUSTOM_AUTH_TOKEN_SECRET?.configured)} onSave={() => saveCustom("token", { CUSTOM_AUTH_TOKEN_SECRET: draft.tokenSecret })} onReset={() => saveCustom("token", { CUSTOM_AUTH_TOKEN_SECRET: "" })} disabled={!draft.tokenSecret.trim()} />
-            </article>
-
-            <article className={cardClass}>
-              <div className="flex items-start justify-between gap-3"><div className="flex gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-rose-50 text-rose-700"><Mail size={20} /></span><div><h3 className="font-semibold text-slate-900">Email mailer</h3><p className="mt-1 text-sm text-slate-600">Use a custom Gmail account to send password reset links.</p></div></div><ConfigBadge active={Boolean(customConfig.CUSTOM_EMAIL_USER?.configured || customConfig.CUSTOM_EMAIL_APP_PASSWORD?.configured)} /></div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2"><label className="block text-sm font-medium text-slate-700">Gmail account<input type="email" autoComplete="off" value={draft.emailUser} onChange={(e) => setDraft({ ...draft, emailUser: e.target.value })} placeholder={customConfig.CUSTOM_EMAIL_USER?.configured ? "Saved · enter a replacement" : "name@gmail.com"} className={inputClass} /></label><label className="block text-sm font-medium text-slate-700">Gmail app password<input type="password" autoComplete="new-password" value={draft.emailPassword} onChange={(e) => setDraft({ ...draft, emailPassword: e.target.value })} placeholder={customConfig.CUSTOM_EMAIL_APP_PASSWORD?.configured ? "Saved securely · enter a replacement" : "16-character app password"} className={inputClass} /></label></div>
-              <p className="mt-2 text-xs leading-5 text-slate-500">Credentials are checked with Gmail before saving. Blank fields keep the existing value; use the reset button to remove both custom overrides.</p>
-              <ConfigActions busy={savingKey === "email"} locked={actionLocked} configured={Boolean(customConfig.CUSTOM_EMAIL_USER?.configured || customConfig.CUSTOM_EMAIL_APP_PASSWORD?.configured)} onSave={() => saveCustom("email", { CUSTOM_EMAIL_USER: draft.emailUser, CUSTOM_EMAIL_APP_PASSWORD: draft.emailPassword })} onReset={() => saveCustom("email", { CUSTOM_EMAIL_USER: "", CUSTOM_EMAIL_APP_PASSWORD: "" })} disabled={!draft.emailUser.trim() || !draft.emailPassword.trim()} />
-            </article>
-
-            <article className={cardClass}>
-              <div className="flex items-start justify-between gap-3"><div className="flex gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-50 text-green-700"><Globe size={20} /></span><div><h3 className="font-semibold text-slate-900">Google OAuth credentials</h3><p className="mt-1 text-sm text-slate-600">Set the OAuth client used for sign-in and Drive exports.</p></div></div><ConfigBadge active={Boolean(customConfig.CUSTOM_GOOGLE_CLIENT_ID?.configured || customConfig.CUSTOM_VITE_GOOGLE_CLIENT_ID?.configured || customConfig.CUSTOM_GOOGLE_CLIENT_SECRET?.configured)} /></div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2"><label className="block text-sm font-medium text-slate-700">Google OAuth Client ID<input type="text" autoComplete="off" value={draft.googleClientId} onChange={(e) => setDraft({ ...draft, googleClientId: e.target.value })} placeholder={customConfig.CUSTOM_GOOGLE_CLIENT_ID?.configured || customConfig.CUSTOM_VITE_GOOGLE_CLIENT_ID?.configured ? "Saved · enter a replacement" : "…apps.googleusercontent.com"} className={inputClass} /></label><label className="block text-sm font-medium text-slate-700">Google OAuth Client Secret<input type="password" autoComplete="new-password" value={draft.googleClientSecret} onChange={(e) => setDraft({ ...draft, googleClientSecret: e.target.value })} placeholder={customConfig.CUSTOM_GOOGLE_CLIENT_SECRET?.configured ? "Saved securely · enter a replacement" : "Server-side client secret"} className={inputClass} /></label><label className="block text-sm font-medium text-slate-700 sm:col-span-2">Google token encryption key<input type="password" autoComplete="new-password" value={draft.googleTokenKey} onChange={(e) => setDraft({ ...draft, googleTokenKey: e.target.value })} placeholder={customConfig.CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY?.configured ? "Saved securely · enter a replacement" : "At least 32 characters · keep this key stable"} className={inputClass} /></label></div>
-              <p className="mt-2 text-xs leading-5 text-slate-500">The client ID is public. The client secret and encryption key stay on the server and are never shown after saving. Keep the encryption key stable so saved Google connections remain usable. Configure the OAuth redirect URL as your server’s /api/v1/integrations/google/callback address.</p>
-              <ConfigActions busy={savingKey === "google"} locked={actionLocked} configured={Boolean(customConfig.CUSTOM_GOOGLE_CLIENT_ID?.configured || customConfig.CUSTOM_VITE_GOOGLE_CLIENT_ID?.configured || customConfig.CUSTOM_GOOGLE_CLIENT_SECRET?.configured || customConfig.CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY?.configured)} onSave={() => saveCustom("google", { CUSTOM_GOOGLE_CLIENT_ID: draft.googleClientId, CUSTOM_VITE_GOOGLE_CLIENT_ID: draft.googleClientId, CUSTOM_GOOGLE_CLIENT_SECRET: draft.googleClientSecret, CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY: draft.googleTokenKey })} onReset={() => saveCustom("google", { CUSTOM_GOOGLE_CLIENT_ID: "", CUSTOM_VITE_GOOGLE_CLIENT_ID: "", CUSTOM_GOOGLE_CLIENT_SECRET: "", CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY: "" })} disabled={!draft.googleClientId.trim() || !draft.googleClientSecret.trim() || draft.googleTokenKey.trim().length < 32} />
-            </article>
-
-            <article className={cardClass}>
-              <div className="flex items-start justify-between gap-3"><div className="flex gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-50 text-amber-700"><ShieldCheck size={20} /></span><div><h3 className="font-semibold text-slate-900">reCAPTCHA v3</h3><p className="mt-1 text-sm text-slate-600">Set the public v3 site key and its private server secret.</p></div></div><ConfigBadge active={Boolean(customConfig.CUSTOM_RECAPTCHA_SECRET_KEY?.configured || customConfig.CUSTOM_VITE_RECAPTCHA_SITE_KEY?.configured)} /></div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2"><label className="block text-sm font-medium text-slate-700">Site key<input type="text" autoComplete="off" value={draft.recaptchaSiteKey} onChange={(e) => setDraft({ ...draft, recaptchaSiteKey: e.target.value })} placeholder={customConfig.CUSTOM_VITE_RECAPTCHA_SITE_KEY?.configured ? "Saved · enter a replacement" : "Public site key"} className={inputClass} /></label><label className="block text-sm font-medium text-slate-700">Secret key<input type="password" autoComplete="new-password" value={draft.recaptchaSecretKey} onChange={(e) => setDraft({ ...draft, recaptchaSecretKey: e.target.value })} placeholder={customConfig.CUSTOM_RECAPTCHA_SECRET_KEY?.configured ? "Saved securely · enter a replacement" : "Private server key"} className={inputClass} /></label></div>
-              <p className="mt-2 text-xs leading-5 text-slate-500">Keys are checked for format; Google verifies the key pair when a user completes the login challenge.</p>
-              <ConfigActions busy={savingKey === "recaptcha"} locked={actionLocked} configured={Boolean(customConfig.CUSTOM_RECAPTCHA_SECRET_KEY?.configured || customConfig.CUSTOM_VITE_RECAPTCHA_SITE_KEY?.configured)} onSave={() => saveCustom("recaptcha", { CUSTOM_RECAPTCHA_SECRET_KEY: draft.recaptchaSecretKey, CUSTOM_VITE_RECAPTCHA_SITE_KEY: draft.recaptchaSiteKey })} onReset={() => saveCustom("recaptcha", { CUSTOM_RECAPTCHA_SECRET_KEY: "", CUSTOM_VITE_RECAPTCHA_SITE_KEY: "" })} disabled={!draft.recaptchaSiteKey.trim() || !draft.recaptchaSecretKey.trim()} />
-            </article>
           </div>
         </section>
 
