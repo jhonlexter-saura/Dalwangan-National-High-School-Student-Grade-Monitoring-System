@@ -3,6 +3,7 @@ import { BrowserRouter, useRoutes } from "react-router-dom";
 import Layout from "./components/layout/Layout";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 
+import Home from "./pages/Home";
 import Login from "./pages/auth/Login";
 import Unauthorized from "./pages/auth/Unauthorized";
 import ForgotPassword from "./pages/auth/ForgotPassword";
@@ -17,6 +18,10 @@ import Logout from "./pages/auth/Logout";
 function AppRoutes() {
   const routes = [
     // Public routes
+    {
+      path: "/",
+      element: <Home />,
+    },
     {
       path: "/login",
       element: <Login />,

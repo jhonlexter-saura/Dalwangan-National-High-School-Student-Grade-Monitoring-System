@@ -174,7 +174,17 @@ function Login() {
     >
       <div className="absolute inset-0 bg-slate-900/35 backdrop-blur-[2px]" />
 
-      <div className="relative z-10 my-8 w-full max-w-md rounded-2xl border border-white/60 bg-white/95 p-8 shadow-xl backdrop-blur-sm">
+      <div className="relative z-10 my-8 w-full max-w-md">
+        <div className="mb-3 text-left">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-1 text-xs font-medium text-white/90 hover:text-white transition drop-shadow-sm"
+          >
+            ← Return to School Homepage
+          </Link>
+        </div>
+
+        <div className="rounded-2xl border border-white/60 bg-white/95 p-8 shadow-xl backdrop-blur-sm">
         <div className="text-center">
           <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-white p-1 shadow-sm ring-2 ring-yellow-400">
             <img src="/dnhs-logo.svg" alt="Dalwangan National High School crest" className="h-full w-full rounded-full object-contain" />
@@ -306,7 +316,8 @@ function Login() {
         )}
       </div>
     </div>
-  );
+  </div>
+);
 }
 
 export default Login;

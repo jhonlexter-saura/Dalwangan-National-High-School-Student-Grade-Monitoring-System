@@ -4,7 +4,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Menu,
   Bell,
-  Search,
+  Globe,
   User,
   Settings,
   LogOut,
@@ -112,31 +112,25 @@ function Header({ onMenuClick }) {
         </div>
       </div>
 
-      {/* Center - Search bar */}
-      <div className="mx-4 hidden max-w-md flex-1 md:block">
-        <div className="relative">
-          <Search
-            size={18}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#000062]/60"
-          />
-
-          <input
-            type="text"
-            placeholder="Search..."
-            className="w-full rounded-lg border border-transparent bg-[#000062]/5 py-2.5 pl-10 pr-4 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-[#EABE3E] focus:bg-white focus:ring-2 focus:ring-[#EABE3E]/30"
-          />
-        </div>
+      {/* Center - School Academic System Badge */}
+      <div className="mx-4 hidden items-center gap-2 rounded-full border border-[#000062]/10 bg-[#000062]/5 px-3.5 py-1.5 md:flex">
+        <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+        <span className="text-xs font-semibold text-[#000062]">Dalwangan National High School</span>
+        <span className="text-xs text-slate-400">·</span>
+        <span className="text-xs text-slate-600">Student Grade Monitoring System</span>
       </div>
 
       {/* Right side */}
       <div className="flex items-center gap-1 sm:gap-2">
-        {/* Search icon - shown only when the bar is collapsed on small screens */}
-        <button
-          className="rounded-lg p-2 text-[#000062] hover:bg-[#000062]/5 md:hidden"
-          aria-label="Search"
+        {/* Quick Link to School Website / Homepage */}
+        <Link
+          to="/"
+          title="View School Homepage"
+          className="hidden items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-[#000062] hover:bg-[#000062]/5 sm:flex transition"
         >
-          <Search size={20} />
-        </button>
+          <Globe size={16} />
+          <span>School Site</span>
+        </Link>
 
         <Link
           to={`/${user?.role}/notifications`}
@@ -209,13 +203,24 @@ function Header({ onMenuClick }) {
                   Profile
                 </Link>
 
+                {user?.role === "admin" && (
+                  <Link
+                    to="/admin/settings"
+                    onClick={closeProfile}
+                    className="flex items-center gap-2.5 px-4 py-2 text-sm text-gray-700 hover:bg-[#000062]/5 hover:text-[#000062]"
+                  >
+                    <Settings size={16} />
+                    Settings
+                  </Link>
+                )}
+
                 <Link
-                  to={`/${user?.role}/settings`}
+                  to="/"
                   onClick={closeProfile}
                   className="flex items-center gap-2.5 px-4 py-2 text-sm text-gray-700 hover:bg-[#000062]/5 hover:text-[#000062]"
                 >
-                  <Settings size={16} />
-                  Settings
+                  <Globe size={16} />
+                  School Homepage
                 </Link>
               </div>
 
