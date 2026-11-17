@@ -38,7 +38,10 @@ async function readSettings() {
 }
 
 function effectiveValue(customKey, defaultKey) {
-  const val = process.env[customKey]?.trim() || process.env[defaultKey]?.trim() || "";
+  let val = process.env[customKey]?.trim() || process.env[defaultKey]?.trim() || "";
+  if (!val && customKey === "CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY") {
+    val = process.env.AUTH_TOKEN_SECRET?.trim() || "";
+  }
   return val.replace(/^["']|["']$/g, "").trim();
 }
 
@@ -229,6 +232,22 @@ function approvalRequest(body) {
     const payload = normalizedCustomConfig(body.payload);
     if (!payload) return null;
     return { action: "custom-config", payload, description: "custom integration credentials" };
+  }
+
+  if (body?.action === "configure-integration") {
+    const target = typeof body.payload?.target === "string" ? body.payload.target.trim() : "";
+    if (!["google", "recaptcha", "email", "token"].includes(target)) return null;
+    const targetNames = {
+      google: "Google OAuth credentials",
+      recaptcha: "reCAPTCHA v3 keys",
+      email: "Email mailer credentials",
+      token: "Token signing secret",
+    };
+    return {
+      action: "configure-integration",
+      payload: { target },
+      description: `access custom configuration for ${targetNames[target] || target}`,
+    };
   }
 
   if (["google-connect", "google-disconnect"].includes(body?.action)) {
@@ -457,6 +476,50 @@ router.post("/security/request-approval", authRateLimits.integrationApprovalIp, 
 
 router.use(requireIntegrationAccess);
 
+router.post("/security/verify-approval", async (req, res) => {
+  try {
+    const { action, payload } = req.body || {};
+    if (action !== "configure-integration") {
+      return res.status(400).json({ error: "Invalid approval action." });
+    }
+
+    const approved = await consumeApproval(req, { action, payload });
+    if (!approved) {
+      return res.status(403).json({ error: "The super-user PIN is invalid or expired." });
+    }
+
+    const configToken = crypto.randomBytes(32).toString("hex");
+    await IntegrationSecurityGrant.create({
+      adminId: req.authenticatedUser._id,
+      superUserId: req.integrationAccess.superUserId,
+      superUserEmail: req.integrationAccess.superUserEmail,
+      purpose: "access-session",
+      accessTokenHash: hashValue(configToken),
+      action: `config-unlocked:${payload?.target}`,
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+    });
+
+    await logAudit({
+      req,
+      action: "INTEGRATION_CONFIG_UNLOCKED",
+      category: "system",
+      target: { entityType: "IntegrationSecurity", name: `Unlocked ${payload?.target} configuration` },
+      description: `Super-user PIN verified to unlock custom configuration for ${payload?.target}.`,
+      details: { target: payload?.target },
+    });
+
+    return res.json({
+      success: true,
+      configToken,
+      target: payload?.target,
+      message: "Custom configuration unlocked.",
+    });
+  } catch (error) {
+    console.error("Verify configure approval error:", error);
+    return res.status(500).json({ error: "Unable to verify super-user PIN." });
+  }
+});
+
 router.get("/", async (req, res) => {
   try {
     return res.json({
@@ -481,20 +544,69 @@ router.put("/custom-config", async (req, res) => {
 
     if (Object.hasOwn(updates, "CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY")) {
       const currentKey = effectiveValue("CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY", "GOOGLE_TOKEN_ENCRYPTION_KEY");
-      if (currentKey && currentKey !== updates.CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY) {
-        const connectedCount = await GoogleIntegration.countDocuments();
-        if (connectedCount) {
-          throw validationError("Disconnect all Google accounts before changing or removing the token encryption key. Existing connections depend on the current key.");
+      const newKey = updates.CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY;
+
+      if (currentKey && currentKey !== newKey) {
+        const isReset = !newKey?.trim();
+        const originalDefault = (process.env.GOOGLE_TOKEN_ENCRYPTION_KEY?.trim() || process.env.AUTH_TOKEN_SECRET?.trim() || "")
+          .replace(/^["']|["']$/g, "").trim();
+        const hasValidFallback = isReset && Buffer.byteLength(originalDefault) >= 32;
+
+        if (!hasValidFallback) {
+          const connectedCount = await GoogleIntegration.countDocuments();
+          if (connectedCount) {
+            throw validationError(
+              isReset
+                ? "Cannot remove the custom encryption key: no original default is configured and Google accounts are still connected. Disconnect all Google accounts first, or configure a GOOGLE_TOKEN_ENCRYPTION_KEY in the server environment."
+                : "Disconnect all Google accounts before changing the token encryption key. Existing connections depend on the current key."
+            );
+          }
+        }
+
+        if (isReset && hasValidFallback && originalDefault !== currentKey) {
+          const connectedCount = await GoogleIntegration.countDocuments();
+          if (connectedCount) {
+            throw validationError(
+              "The original default encryption key differs from the current custom key. Existing Google tokens were encrypted with the custom key and would become unreadable. Disconnect all Google accounts before resetting."
+            );
+          }
         }
       }
     }
 
     await validateCustomValues(updates);
 
-    const approved = await consumeApproval(req, { action: "custom-config", payload: updates });
-    if (!approved) {
-      return res.status(403).json({ error: "A valid, unused super-user PIN is required for this exact configuration change." });
+    const configToken = req.get("x-su-config-token");
+    let authorized = false;
+
+    if (configToken && /^[a-f0-9]{64}$/i.test(configToken)) {
+      const updatedKeys = Object.keys(updates);
+      const isGoogle = updatedKeys.some((k) => k.includes("GOOGLE"));
+      const isRecaptcha = updatedKeys.some((k) => k.includes("RECAPTCHA"));
+      const isEmail = updatedKeys.some((k) => k.includes("EMAIL"));
+      const isToken = updatedKeys.some((k) => k.includes("AUTH_TOKEN") || k.includes("DATABASE"));
+      const targetGroup = isGoogle ? "google" : isRecaptcha ? "recaptcha" : isEmail ? "email" : isToken ? "token" : null;
+
+      const grant = await IntegrationSecurityGrant.findOne({
+        adminId: req.authenticatedUser._id,
+        purpose: "access-session",
+        accessTokenHash: hashValue(configToken),
+        ...(targetGroup ? { action: `config-unlocked:${targetGroup}` } : {}),
+        expiresAt: { $gt: new Date() },
+      });
+
+      if (grant) {
+        authorized = true;
+      }
     }
+
+    if (!authorized) {
+      const approved = await consumeApproval(req, { action: "custom-config", payload: updates });
+      if (!approved) {
+        return res.status(403).json({ error: "Super-user authorization required. Please click Configure and verify with the super-user PIN." });
+      }
+    }
+
     await saveCustomConfig(updates);
 
     logAudit({

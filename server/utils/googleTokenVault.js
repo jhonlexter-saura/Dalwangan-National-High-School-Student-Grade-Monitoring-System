@@ -1,7 +1,9 @@
 const crypto = require("crypto");
 
 function getEncryptionKey() {
-  const secret = process.env.CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY?.trim() || process.env.GOOGLE_TOKEN_ENCRYPTION_KEY?.trim();
+  const secret = process.env.CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY?.trim()
+    || process.env.GOOGLE_TOKEN_ENCRYPTION_KEY?.trim()
+    || process.env.AUTH_TOKEN_SECRET?.trim();
   if (!secret || Buffer.byteLength(secret) < 32) {
     throw new Error("Set GOOGLE_TOKEN_ENCRYPTION_KEY to a stable secret of at least 32 bytes to store Google tokens securely.");
   }

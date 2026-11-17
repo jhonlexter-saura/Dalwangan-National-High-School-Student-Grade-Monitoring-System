@@ -406,6 +406,17 @@ export function requestIntegrationChangeApproval(action, payload = {}) {
   });
 }
 
+export function verifyIntegrationApproval(approvalId, pin, action, payload = {}) {
+  return request("/integrations/security/verify-approval", {
+    method: "POST",
+    body: JSON.stringify({ action, payload }),
+    headers: {
+      "X-SU-Approval": approvalId,
+      "X-SU-Pin": pin,
+    },
+  });
+}
+
 export function updateIntegrationSetting(key, enabled, approval) {
   return request("/integrations", {
     method: "PATCH",
@@ -417,14 +428,19 @@ export function updateIntegrationSetting(key, enabled, approval) {
   });
 }
 
-export function updateCustomIntegrationConfig(customConfig, approval) {
+export function updateCustomIntegrationConfig(customConfig, auth = {}) {
+  const headers = {};
+  if (auth.configToken) {
+    headers["X-SU-Config-Token"] = auth.configToken;
+  }
+  if (auth.approvalId && auth.pin) {
+    headers["X-SU-Approval"] = auth.approvalId;
+    headers["X-SU-Pin"] = auth.pin;
+  }
   return request("/integrations/custom-config", {
     method: "PUT",
     body: JSON.stringify({ customConfig }),
-    headers: {
-      "X-SU-Approval": approval.approvalId,
-      "X-SU-Pin": approval.pin,
-    },
+    headers,
   }).then((result) => {
     window.dispatchEvent(new Event("dnhs:integration-config-updated"));
     return result;

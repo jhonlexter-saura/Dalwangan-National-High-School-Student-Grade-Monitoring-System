@@ -14,7 +14,8 @@ import {
   Cloud,
   ChevronDown,
   ChevronUp,
-  Settings2,
+  Lock,
+  LockOpen,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useToast } from "../../context/ToastContext";
@@ -24,6 +25,7 @@ import {
   requestIntegrationAccessCode,
   verifyIntegrationAccessCode,
   requestIntegrationChangeApproval,
+  verifyIntegrationApproval,
   updateIntegrationSetting,
   updateCustomIntegrationConfig,
   exportAuditLogs,
@@ -109,9 +111,30 @@ function AdminIntegrations() {
     recaptchaSecretKey: "",
   });
   const [expandedConfig, setExpandedConfig] = useState({});
+  const [unlockedConfigs, setUnlockedConfigs] = useState({});
 
-  function toggleConfigPanel(key) {
-    setExpandedConfig((prev) => ({ ...prev, [key]: !prev[key] }));
+  async function handleConfigureClick(group, integrationKey) {
+    if (savingKey || approvalRequesting || Boolean(approval)) return;
+
+    // If already expanded, clicking collapses the panel without re-authenticating
+    if (expandedConfig[integrationKey]) {
+      setExpandedConfig((prev) => ({ ...prev, [integrationKey]: false }));
+      return;
+    }
+
+    // If already unlocked in this session, simply expand it
+    if (unlockedConfigs[group]) {
+      setExpandedConfig((prev) => ({ ...prev, [integrationKey]: true }));
+      return;
+    }
+
+    // Require Super-User PIN approval the moment Configure is clicked
+    await requestApprovedChange("configure-integration", { target: group }, async ({ approvalId, pin }) => {
+      const result = await verifyIntegrationApproval(approvalId, pin, "configure-integration", { target: group });
+      setUnlockedConfigs((prev) => ({ ...prev, [group]: result.configToken }));
+      setExpandedConfig((prev) => ({ ...prev, [integrationKey]: true }));
+      showToast(result.message || "Custom configuration unlocked.", "success");
+    });
   }
 
   async function loadSettings() {
@@ -285,6 +308,46 @@ function AdminIntegrations() {
 
   async function saveCustom(group, values) {
     if (savingKey) return;
+
+    const draftFieldByEnvKey = {
+      CUSTOM_AUTH_TOKEN_SECRET: "tokenSecret",
+      CUSTOM_EMAIL_USER: "emailUser",
+      CUSTOM_EMAIL_APP_PASSWORD: "emailPassword",
+      CUSTOM_GOOGLE_CLIENT_ID: "googleClientId",
+      CUSTOM_GOOGLE_CLIENT_SECRET: "googleClientSecret",
+      CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY: "googleTokenKey",
+      CUSTOM_VITE_GOOGLE_CLIENT_ID: "googleClientId",
+      CUSTOM_RECAPTCHA_SECRET_KEY: "recaptchaSecretKey",
+      CUSTOM_VITE_RECAPTCHA_SITE_KEY: "recaptchaSiteKey",
+    };
+
+    // If unlocked via configure-button MFA, save directly using configToken
+    const configToken = unlockedConfigs[group];
+    if (configToken) {
+      setSavingKey(group);
+      setError("");
+      setCustomWarning("");
+      try {
+        const result = await updateCustomIntegrationConfig(values, { configToken });
+        setCustomConfig(result.customConfig || {});
+        setCustomWarning("");
+        showToast(result.message || "Custom settings verified and saved.", "success", 6500);
+        setDraft((current) => ({ ...current, ...Object.fromEntries(Object.keys(values).map((key) => [draftFieldByEnvKey[key], ""])) }));
+      } catch (err) {
+        const msg = err.message || "Unable to save custom settings.";
+        setError(msg);
+        setCustomWarning(msg);
+        if (err.status === 403) {
+          // Re-lock if the config session expired
+          setUnlockedConfigs((prev) => ({ ...prev, [group]: "" }));
+        }
+      } finally {
+        setSavingKey("");
+      }
+      return;
+    }
+
+    // Fallback: request one-time approval if saved without pre-unlocking
     await requestApprovedChange("custom-config", values, async (approved) => {
       setSavingKey(group);
       setError("");
@@ -294,17 +357,6 @@ function AdminIntegrations() {
         setCustomConfig(result.customConfig || {});
         setCustomWarning("");
         showToast(result.message || "Custom settings verified and saved.", "success", 6500);
-        const draftFieldByEnvKey = {
-          CUSTOM_AUTH_TOKEN_SECRET: "tokenSecret",
-          CUSTOM_EMAIL_USER: "emailUser",
-          CUSTOM_EMAIL_APP_PASSWORD: "emailPassword",
-          CUSTOM_GOOGLE_CLIENT_ID: "googleClientId",
-          CUSTOM_GOOGLE_CLIENT_SECRET: "googleClientSecret",
-          CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY: "googleTokenKey",
-          CUSTOM_VITE_GOOGLE_CLIENT_ID: "googleClientId",
-          CUSTOM_RECAPTCHA_SECRET_KEY: "recaptchaSecretKey",
-          CUSTOM_VITE_RECAPTCHA_SITE_KEY: "recaptchaSiteKey",
-        };
         setDraft((current) => ({ ...current, ...Object.fromEntries(Object.keys(values).map((key) => [draftFieldByEnvKey[key], ""])) }));
       } catch (err) {
         const msg = err.message || "Unable to save custom settings.";
@@ -533,6 +585,7 @@ function AdminIntegrations() {
               const saving = savingKey === key;
               const isExpanded = Boolean(expandedConfig[key]);
               const hasCustomPanel = Boolean(customGroup && customConfigRenderers[customGroup]);
+              const isUnlocked = Boolean(customGroup && unlockedConfigs[customGroup]);
 
               return (
                 <article
@@ -577,16 +630,23 @@ function AdminIntegrations() {
                       {hasCustomPanel && (
                         <button
                           type="button"
-                          onClick={() => toggleConfigPanel(key)}
-                          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                          onClick={() => handleConfigureClick(customGroup, key)}
+                          disabled={loading || actionLocked}
+                          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
                             isExpanded
                               ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                              : isUnlocked
+                              ? "border-emerald-300 bg-emerald-50/70 text-emerald-800 hover:bg-emerald-100"
                               : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
                           }`}
                           aria-expanded={isExpanded}
-                          title="Configure custom credentials"
+                          title={isUnlocked ? "Custom credentials unlocked" : "Requires super-user PIN to configure"}
                         >
-                          <Settings2 size={15} />
+                          {isUnlocked ? (
+                            <LockOpen size={14} className="text-emerald-600 shrink-0" />
+                          ) : (
+                            <Lock size={14} className="text-slate-400 shrink-0" />
+                          )}
                           <span className="hidden sm:inline">Configure</span>
                           {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                         </button>
@@ -650,7 +710,7 @@ function AdminIntegrations() {
           )}
         </section>
 
-        {/* ── Token signing secret — standalone since it's not tied to a specific toggle ── */}
+        {/* ── Token signing secret — protected with Super-User PIN configure MFA ── */}
         <section className={cardClass}>
           <div className="flex items-start justify-between gap-3">
             <div className="flex gap-3">
@@ -661,11 +721,39 @@ function AdminIntegrations() {
                 <p className="mt-1 text-sm text-slate-600">Signs login tokens used to protect administrator and user sessions.</p>
               </div>
             </div>
-            <ConfigBadge active={Boolean(customConfig.CUSTOM_AUTH_TOKEN_SECRET?.configured)} />
+            <div className="flex items-center gap-2">
+              <ConfigBadge active={Boolean(customConfig.CUSTOM_AUTH_TOKEN_SECRET?.configured)} />
+              <button
+                type="button"
+                onClick={() => handleConfigureClick("token", "tokenSecret")}
+                disabled={loading || actionLocked}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
+                  expandedConfig["tokenSecret"]
+                    ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                    : unlockedConfigs["token"]
+                    ? "border-emerald-300 bg-emerald-50/70 text-emerald-800 hover:bg-emerald-100"
+                    : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
+                }`}
+                aria-expanded={Boolean(expandedConfig["tokenSecret"])}
+                title={unlockedConfigs["token"] ? "Token signing secret unlocked" : "Requires super-user PIN to configure"}
+              >
+                {unlockedConfigs["token"] ? (
+                  <LockOpen size={14} className="text-emerald-600 shrink-0" />
+                ) : (
+                  <Lock size={14} className="text-slate-400 shrink-0" />
+                )}
+                <span className="hidden sm:inline">Configure</span>
+                {expandedConfig["tokenSecret"] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
+            </div>
           </div>
-          <label className="mt-4 block text-sm font-medium text-slate-700">Custom secret<input type="password" autoComplete="new-password" value={draft.tokenSecret} onChange={(e) => setDraft({ ...draft, tokenSecret: e.target.value })} placeholder={customConfig.CUSTOM_AUTH_TOKEN_SECRET?.configured ? "Saved securely · enter a replacement" : "Enter at least 32 characters"} className={inputClass} /></label>
-          <p className="mt-2 text-xs leading-5 text-amber-800">Requires at least 32 characters and a server restart. Existing sessions will need to sign in again after the new secret takes effect.</p>
-          <ConfigActions busy={savingKey === "token"} locked={actionLocked} configured={Boolean(customConfig.CUSTOM_AUTH_TOKEN_SECRET?.configured)} onSave={() => saveCustom("token", { CUSTOM_AUTH_TOKEN_SECRET: draft.tokenSecret })} onReset={() => saveCustom("token", { CUSTOM_AUTH_TOKEN_SECRET: "" })} disabled={!draft.tokenSecret.trim()} />
+          {expandedConfig["tokenSecret"] && (
+            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5">
+              <label className="block text-sm font-medium text-slate-700">Custom secret<input type="password" autoComplete="new-password" value={draft.tokenSecret} onChange={(e) => setDraft({ ...draft, tokenSecret: e.target.value })} placeholder={customConfig.CUSTOM_AUTH_TOKEN_SECRET?.configured ? "Saved securely · enter a replacement" : "Enter at least 32 characters"} className={inputClass} /></label>
+              <p className="mt-2 text-xs leading-5 text-amber-800">Requires at least 32 characters and a server restart. Existing sessions will need to sign in again after the new secret takes effect.</p>
+              <ConfigActions busy={savingKey === "token"} locked={actionLocked} configured={Boolean(customConfig.CUSTOM_AUTH_TOKEN_SECRET?.configured)} onSave={() => saveCustom("token", { CUSTOM_AUTH_TOKEN_SECRET: draft.tokenSecret })} onReset={() => saveCustom("token", { CUSTOM_AUTH_TOKEN_SECRET: "" })} disabled={!draft.tokenSecret.trim()} />
+            </div>
+          )}
         </section>
 
         <section className={cardClass}>
