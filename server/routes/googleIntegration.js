@@ -3,6 +3,7 @@ const crypto = require("crypto");
 const GoogleIntegration = require("../models/GoogleIntegration");
 const User = require("../models/User");
 const { requireAuthenticatedUser } = require("../middleware/authorization");
+const { requireIntegrationAccess, consumeApproval } = require("../middleware/integrationSecurity");
 const { logAudit } = require("../services/auditLogger");
 const {
   generateGoogleAuthUrl,
@@ -13,6 +14,11 @@ const { encryptGoogleToken, isGoogleTokenEncryptionConfigured } = require("../ut
 
 const router = express.Router();
 const ephemeralStateSecret = crypto.randomBytes(32).toString("hex");
+
+function requireIntegrationAccessForAdmins(req, res, next) {
+  if (req.authenticatedUser?.role !== "admin") return next();
+  return requireIntegrationAccess(req, res, next);
+}
 
 function getStateSecret() {
   return process.env.CUSTOM_AUTH_TOKEN_SECRET?.trim() || process.env.AUTH_TOKEN_SECRET || ephemeralStateSecret;
@@ -44,8 +50,8 @@ function verifySignedState(stateString) {
   }
 }
 
-// GET /connect - Generates Google OAuth consent URL
-router.get("/connect", requireAuthenticatedUser, (req, res) => {
+// POST /connect - Generates Google OAuth consent URL
+router.post("/connect", requireAuthenticatedUser, requireIntegrationAccessForAdmins, async (req, res) => {
   try {
     const { clientId } = getGoogleCredentials();
     if (!clientId || !getGoogleCredentials().clientSecret || !isGoogleTokenEncryptionConfigured()) {
@@ -54,7 +60,14 @@ router.get("/connect", requireAuthenticatedUser, (req, res) => {
       });
     }
 
-    const requestedReturnTo = typeof req.query.returnTo === "string" ? req.query.returnTo : "";
+    if (req.authenticatedUser.role === "admin") {
+      const approved = await consumeApproval(req, { action: "google-connect", payload: {} });
+      if (!approved) {
+        return res.status(403).json({ error: "A valid, unused super-user PIN is required to connect Google Drive." });
+      }
+    }
+
+    const requestedReturnTo = typeof req.body?.returnTo === "string" ? req.body.returnTo : "";
     const safeReturnTo = requestedReturnTo.startsWith("/") && !requestedReturnTo.startsWith("//") && !requestedReturnTo.includes("\\")
       ? requestedReturnTo
       : (req.authenticatedUser?.role === "admin" ? "/admin/integrations" : "/student/grades");
@@ -167,8 +180,15 @@ router.get("/status", requireAuthenticatedUser, async (req, res) => {
 });
 
 // POST /disconnect - Disconnects user's Google account
-router.post("/disconnect", requireAuthenticatedUser, async (req, res) => {
+router.post("/disconnect", requireAuthenticatedUser, requireIntegrationAccessForAdmins, async (req, res) => {
   try {
+    if (req.authenticatedUser.role === "admin") {
+      const approved = await consumeApproval(req, { action: "google-disconnect", payload: {} });
+      if (!approved) {
+        return res.status(403).json({ error: "A valid, unused super-user PIN is required to disconnect Google Drive." });
+      }
+    }
+
     const integration = await GoogleIntegration.findOneAndDelete({
       userId: req.authenticatedUser._id,
     });

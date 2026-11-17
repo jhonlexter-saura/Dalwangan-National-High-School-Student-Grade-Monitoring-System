@@ -69,4 +69,14 @@ async function sendPasswordResetEmail({ to, name, resetUrl, expiresInMinutes }) 
   });
 }
 
-module.exports = { sendPasswordResetEmail };
+async function sendIntegrationSecurityEmail({ to, subject, text }) {
+  const user = process.env.CUSTOM_EMAIL_USER?.trim() || process.env.EMAIL_USER;
+  await getTransporter().sendMail({
+    from: `"DNHS-SGMS" <${user}>`,
+    to,
+    subject,
+    text,
+  });
+}
+
+module.exports = { sendPasswordResetEmail, sendIntegrationSecurityEmail };

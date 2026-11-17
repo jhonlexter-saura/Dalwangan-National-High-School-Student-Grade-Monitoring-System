@@ -8,6 +8,9 @@ async function request(endpoint, options = {}) {
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(endpoint.startsWith("/integrations") && sessionStorage.getItem("dnhs_integration_access")
+        ? { "X-Integration-Access": sessionStorage.getItem("dnhs_integration_access") }
+        : {}),
       ...(options.headers || {}),
     },
   });
@@ -382,17 +385,46 @@ export function getIntegrationSettings() {
   return request("/integrations");
 }
 
-export function updateIntegrationSetting(key, enabled) {
-  return request("/integrations", {
-    method: "PATCH",
-    body: JSON.stringify({ [key]: enabled }),
+export function requestIntegrationAccessCode(email) {
+  return request("/integrations/security/request-access", {
+    method: "POST",
+    body: JSON.stringify({ email }),
   });
 }
 
-export function updateCustomIntegrationConfig(customConfig) {
+export function verifyIntegrationAccessCode(challengeId, code) {
+  return request("/integrations/security/verify-access", {
+    method: "POST",
+    body: JSON.stringify({ challengeId, code }),
+  });
+}
+
+export function requestIntegrationChangeApproval(action, payload = {}) {
+  return request("/integrations/security/request-approval", {
+    method: "POST",
+    body: JSON.stringify({ action, payload }),
+  });
+}
+
+export function updateIntegrationSetting(key, enabled, approval) {
+  return request("/integrations", {
+    method: "PATCH",
+    body: JSON.stringify({ [key]: enabled }),
+    headers: {
+      "X-SU-Approval": approval.approvalId,
+      "X-SU-Pin": approval.pin,
+    },
+  });
+}
+
+export function updateCustomIntegrationConfig(customConfig, approval) {
   return request("/integrations/custom-config", {
     method: "PUT",
     body: JSON.stringify({ customConfig }),
+    headers: {
+      "X-SU-Approval": approval.approvalId,
+      "X-SU-Pin": approval.pin,
+    },
   }).then((result) => {
     window.dispatchEvent(new Event("dnhs:integration-config-updated"));
     return result;
@@ -574,13 +606,31 @@ export function getGoogleIntegrationStatus() {
   return request("/integrations/google/status", { cache: "no-store" });
 }
 
-export function getGoogleConnectUrl(returnTo = "") {
-  return request(`/integrations/google/connect${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ""}`);
+export function getGoogleConnectUrl(returnTo = "", approval) {
+  return request("/integrations/google/connect", {
+    method: "POST",
+    body: JSON.stringify({ returnTo }),
+    headers: approval ? {
+      "X-SU-Approval": approval.approvalId,
+      "X-SU-Pin": approval.pin,
+    } : {},
+  });
 }
 
-export function disconnectGoogle() {
+export async function getAdminGoogleConnectUrl(returnTo = "") {
+  const { approvalId } = await requestIntegrationChangeApproval("google-connect");
+  const pin = window.prompt("Enter the one-time Google Drive approval PIN shared by the super user:");
+  if (!pin) throw new Error("Google Drive connection was cancelled.");
+  return getGoogleConnectUrl(returnTo, { approvalId, pin: pin.trim() });
+}
+
+export function disconnectGoogle(approval) {
   return request("/integrations/google/disconnect", {
     method: "POST",
+    headers: approval ? {
+      "X-SU-Approval": approval.approvalId,
+      "X-SU-Pin": approval.pin,
+    } : {},
   });
 }
 

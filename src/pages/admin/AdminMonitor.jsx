@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Activity, CalendarDays, Check, ChevronDown, CircleAlert, Cloud, Copy, Download, FileSearch, RefreshCw, Search, Settings2, ShieldCheck, X } from "lucide-react";
-import { exportAuditLogs, exportReportToGoogleSheets, getAuditLogDetail, getAuditLogExportData, getAuditLogs, getGoogleConnectUrl, getGoogleIntegrationStatus, saveReportToGoogleDrive } from "../../services/schoolDataService";
+import { exportAuditLogs, exportReportToGoogleSheets, getAuditLogDetail, getAuditLogExportData, getAuditLogs, getAdminGoogleConnectUrl, getGoogleIntegrationStatus, saveReportToGoogleDrive } from "../../services/schoolDataService";
 import { adminAuditRowsForSheets, createAdminAuditPdf, createAdminAuditXlsx, downloadAdminAuditPdf, downloadAdminAuditXlsx } from "../../utils/adminAuditExports";
 import { useToast } from "../../context/ToastContext";
 import { blobToBase64 } from "../../utils/googleFileData";
@@ -189,7 +189,7 @@ export default function AdminMonitor() {
       if (!connected) {
         sessionStorage.setItem(PENDING_DRIVE_EXPORT_KEY, JSON.stringify({ format, query: exportQuery }));
         const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-        const { authUrl } = await getGoogleConnectUrl(returnTo);
+        const { authUrl } = await getAdminGoogleConnectUrl(returnTo);
         window.location.assign(authUrl);
         return;
       }
@@ -253,7 +253,7 @@ export default function AdminMonitor() {
       if (!connected) {
         sessionStorage.setItem(PENDING_DRIVE_EXPORT_KEY, JSON.stringify({ format: "sheets", query: exportQuery }));
         const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-        const { authUrl } = await getGoogleConnectUrl(returnTo);
+        const { authUrl } = await getAdminGoogleConnectUrl(returnTo);
         window.location.assign(authUrl);
         return;
       }

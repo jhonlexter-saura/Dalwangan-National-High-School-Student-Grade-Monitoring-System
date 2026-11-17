@@ -11,7 +11,7 @@ import {
   getActivitiesByAssignment, getScoresByActivity, saveScore,
   getAssignmentGradebook, getAssignmentGradebookStatus,
   finalizeSubjectGradebook, unlockSubjectGradebook,
-  getGoogleIntegrationStatus, getGoogleConnectUrl, saveReportToGoogleDrive,
+  getGoogleIntegrationStatus, getGoogleConnectUrl, getAdminGoogleConnectUrl, saveReportToGoogleDrive,
 } from "../services/schoolDataService";
 import { blobToBase64, downloadBlob } from "../utils/googleFileData";
 
@@ -265,7 +265,8 @@ export default function AssignmentScores({ admin = false }) {
       setExporting("sheets");
       if (!googleStatus.connected) {
         if (!googleStatus.available) throw new Error("Google Drive is not configured yet. Please contact your administrator.");
-        const { authUrl } = await getGoogleConnectUrl(`${window.location.pathname}${window.location.search}`);
+        const returnTo = `${window.location.pathname}${window.location.search}`;
+        const { authUrl } = await (admin ? getAdminGoogleConnectUrl(returnTo) : getGoogleConnectUrl(returnTo));
         window.location.assign(authUrl);
         return;
       }

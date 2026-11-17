@@ -130,6 +130,9 @@ const limits = {
   passkeyVerifyIp: createIpRateLimiter({ endpoint: "passkey verification", limit: 10, windowMs: 60 * 1000, message: "Too many passkey attempts. Please try again shortly." }),
   forgotPasswordIp: createIpRateLimiter({ endpoint: "password recovery", limit: 20, windowMs: 60 * 60 * 1000, message: "Too many password recovery requests. Please try again later." }),
   resetPasswordIp: createIpRateLimiter({ endpoint: "password reset", limit: 10, windowMs: 60 * 60 * 1000, message: "Too many password reset attempts. Please try again later." }),
+  integrationOtpRequestIp: createIpRateLimiter({ endpoint: "integration access code", limit: 5, windowMs: 15 * 60 * 1000, message: "Too many integration access requests. Please try again later." }),
+  integrationOtpVerifyIp: createIpRateLimiter({ endpoint: "integration access verification", limit: 10, windowMs: 15 * 60 * 1000, message: "Too many integration verification attempts. Please try again later." }),
+  integrationApprovalIp: createIpRateLimiter({ endpoint: "integration change approval", limit: 10, windowMs: 15 * 60 * 1000, message: "Too many super-user approval requests. Please try again later." }),
 };
 
 function forgotPasswordAccountLimit(req, res, next) {

@@ -1,8 +1,14 @@
 const express = require("express");
 const mongoose = require("mongoose");
+const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const IntegrationSetting = require("../models/IntegrationSetting");
+const IntegrationSecurityGrant = require("../models/IntegrationSecurityGrant");
+const User = require("../models/User");
 const { requireAdmin } = require("../middleware/authorization");
+const { requireIntegrationAccess, hashValue, hashCode, hashPayload, consumeApproval } = require("../middleware/integrationSecurity");
+const { sendIntegrationSecurityEmail } = require("../utils/mailer");
+const { limits: authRateLimits } = require("../middleware/authRateLimit");
 const { logAudit } = require("../services/auditLogger");
 const GoogleIntegration = require("../models/GoogleIntegration");
 const {
@@ -178,8 +184,278 @@ router.get("/public", async (req, res) => {
   }
 });
 
-// All management endpoints below require an active administrator.
+const SECURITY_RECORD_LIFETIME_MS = 24 * 60 * 60 * 1000;
+const SECURITY_CODE_LIFETIME_MS = 5 * 60 * 1000;
+
+async function findConfiguredSuperUser() {
+  const configuredEmail = process.env.SUPER_USER_EMAIL?.trim().toLowerCase();
+  if (!configuredEmail) return null;
+  return User.findOne({
+    email: configuredEmail,
+    role: "admin",
+    status: "active",
+  }).select("name email role status");
+}
+
+function normalizedCustomConfig(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const normalized = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (!Object.hasOwn(CUSTOM_ENV_KEYS, key) || typeof value !== "string" || value.length > 4096) {
+      return null;
+    }
+    normalized[key] = key === "CUSTOM_EMAIL_APP_PASSWORD"
+      ? value.trim().replace(/\s+/g, "")
+      : value.trim();
+  }
+  return Object.keys(normalized).length ? normalized : null;
+}
+
+function approvalRequest(body) {
+  if (body?.action === "toggle-setting") {
+    const payload = body.payload;
+    if (
+      !payload ||
+      typeof payload !== "object" ||
+      Array.isArray(payload) ||
+      Object.keys(payload).length !== 2 ||
+      !["googleSignIn", "recaptcha"].includes(payload.key) ||
+      typeof payload.value !== "boolean"
+    ) return null;
+    return { action: "toggle-setting", payload: { key: payload.key, value: payload.value }, description: `${payload.key} setting` };
+  }
+
+  if (body?.action === "custom-config") {
+    const payload = normalizedCustomConfig(body.payload);
+    if (!payload) return null;
+    return { action: "custom-config", payload, description: "custom integration credentials" };
+  }
+
+  if (["google-connect", "google-disconnect"].includes(body?.action)) {
+    if (body.payload && (typeof body.payload !== "object" || Array.isArray(body.payload) || Object.keys(body.payload).length)) {
+      return null;
+    }
+    return {
+      action: body.action,
+      payload: {},
+      description: body.action === "google-connect" ? "Google Drive connection" : "Google Drive disconnection",
+    };
+  }
+
+  return null;
+}
+
+// All private endpoints require an active administrator.
 router.use(requireAdmin);
+
+router.post("/security/request-access", authRateLimits.integrationOtpRequestIp, async (req, res) => {
+  try {
+    const suppliedEmail = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+    const configuredEmail = process.env.SUPER_USER_EMAIL?.trim().toLowerCase();
+    if (!configuredEmail) {
+      return res.status(503).json({ error: "Super-user access is not configured on this server." });
+    }
+    if (!suppliedEmail || suppliedEmail !== configuredEmail) {
+      return res.status(403).json({ error: "The super-user email could not be verified." });
+    }
+
+    const superUser = await findConfiguredSuperUser();
+    if (!superUser) {
+      return res.status(503).json({ error: "The configured super-user must be an active administrator account." });
+    }
+
+    const code = String(crypto.randomInt(10000000, 100000000));
+    const now = Date.now();
+    const grant = await IntegrationSecurityGrant.create({
+      adminId: req.authenticatedUser._id,
+      superUserId: superUser._id,
+      superUserEmail: superUser.email,
+      purpose: "access-otp",
+      codeHash: hashCode("pending", code),
+      codeExpiresAt: new Date(now + SECURITY_CODE_LIFETIME_MS),
+      expiresAt: new Date(now + SECURITY_RECORD_LIFETIME_MS),
+    });
+    grant.codeHash = hashCode(String(grant._id), code);
+    await grant.save();
+
+    try {
+      await sendIntegrationSecurityEmail({
+        to: superUser.email,
+        subject: "DNHS-SGMS integration access verification",
+        text: [
+          `An administrator (${req.authenticatedUser._id}) requested access to critical integration settings.`,
+          `Share this one-time verification code with them: ${code}`,
+          "The code expires in 5 minutes. If you did not authorize this request, do not share it.",
+        ].join("\n\n"),
+      });
+    } catch (mailError) {
+      await IntegrationSecurityGrant.deleteOne({ _id: grant._id });
+      console.error("Integration access email error:", mailError);
+      return res.status(503).json({ error: "Unable to send the super-user verification code." });
+    }
+
+    await logAudit({
+      req,
+      action: "INTEGRATION_ACCESS_CODE_REQUESTED",
+      category: "system",
+      target: { entityType: "IntegrationSecurity", name: "Admin integration access" },
+      description: "Requested a super-user verification code for integration access.",
+      details: { superUserId: String(superUser._id) },
+    });
+
+    return res.json({
+      success: true,
+      challengeId: String(grant._id),
+      message: "A verification code was sent to the configured super user. It expires in 5 minutes.",
+    });
+  } catch (error) {
+    console.error("Integration access code request error:", error);
+    return res.status(500).json({ error: "Unable to request integration access." });
+  }
+});
+
+router.post("/security/verify-access", authRateLimits.integrationOtpVerifyIp, async (req, res) => {
+  try {
+    res.set("Cache-Control", "no-store");
+    const { challengeId, code } = req.body || {};
+    if (!mongoose.isValidObjectId(challengeId) || typeof code !== "string" || !/^\d{8}$/.test(code)) {
+      return res.status(400).json({ error: "Enter the 8-digit verification code." });
+    }
+
+    const now = new Date();
+    const grant = await IntegrationSecurityGrant.findOneAndUpdate(
+      {
+        _id: challengeId,
+        adminId: req.authenticatedUser._id,
+        purpose: "access-otp",
+        codeHash: hashCode(String(challengeId), code),
+        codeExpiresAt: { $gt: now },
+        expiresAt: { $gt: now },
+        consumedAt: null,
+        attemptCount: { $lt: 5 },
+      },
+      { $set: { consumedAt: now }, $unset: { codeHash: "" } },
+      { new: true }
+    );
+
+    if (!grant) {
+      await IntegrationSecurityGrant.updateOne(
+        {
+          _id: challengeId,
+          adminId: req.authenticatedUser._id,
+          purpose: "access-otp",
+          codeExpiresAt: { $gt: now },
+          expiresAt: { $gt: now },
+          consumedAt: null,
+          attemptCount: { $lt: 5 },
+        },
+        { $inc: { attemptCount: 1 } }
+      );
+      await logAudit({
+        req,
+        action: "INTEGRATION_ACCESS_VERIFICATION_FAILED",
+        category: "system",
+        target: { entityType: "IntegrationSecurity", name: "Admin integration access" },
+        description: "A super-user integration access code was invalid or expired.",
+        details: { failureReason: "invalid_or_expired_code" },
+        status: "failed",
+      });
+      return res.status(401).json({ error: "The verification code is invalid or expired." });
+    }
+
+    const accessToken = crypto.randomBytes(32).toString("hex");
+    const session = await IntegrationSecurityGrant.create({
+      adminId: grant.adminId,
+      superUserId: grant.superUserId,
+      superUserEmail: grant.superUserEmail,
+      purpose: "access-session",
+      accessTokenHash: hashValue(accessToken),
+      expiresAt: grant.expiresAt,
+    });
+
+    await logAudit({
+      req,
+      action: "INTEGRATION_ACCESS_GRANTED",
+      category: "system",
+      target: { entityType: "IntegrationSecurity", entityId: String(session._id), name: "Admin integration access" },
+      description: "Verified super-user code and granted temporary integration access.",
+      details: { superUserId: String(grant.superUserId), expiresAt: grant.expiresAt },
+    });
+
+    res.set("Cache-Control", "no-store");
+    return res.json({ success: true, accessToken, expiresAt: grant.expiresAt });
+  } catch (error) {
+    console.error("Integration access verification error:", error);
+    return res.status(500).json({ error: "Unable to verify integration access." });
+  }
+});
+
+router.post("/security/request-approval", authRateLimits.integrationApprovalIp, requireIntegrationAccess, async (req, res) => {
+  try {
+    const request = approvalRequest(req.body);
+    if (!request) {
+      return res.status(400).json({ error: "The integration change approval request is invalid." });
+    }
+
+    const superUser = await findConfiguredSuperUser();
+    if (!superUser) {
+      return res.status(503).json({ error: "The configured super-user must be an active administrator account." });
+    }
+
+    const pin = String(crypto.randomInt(10000000, 100000000));
+    const now = Date.now();
+    const grant = await IntegrationSecurityGrant.create({
+      adminId: req.authenticatedUser._id,
+      superUserId: superUser._id,
+      superUserEmail: superUser.email,
+      purpose: "change-approval",
+      codeHash: hashCode("pending", pin),
+      codeExpiresAt: new Date(now + SECURITY_CODE_LIFETIME_MS),
+      action: request.action,
+      payloadHash: hashPayload(request.payload),
+      expiresAt: new Date(now + SECURITY_RECORD_LIFETIME_MS),
+    });
+    grant.codeHash = hashCode(String(grant._id), pin);
+    await grant.save();
+
+    try {
+      await sendIntegrationSecurityEmail({
+        to: superUser.email,
+        subject: "DNHS-SGMS integration change approval",
+        text: [
+          `An administrator (${req.authenticatedUser._id}) requested approval for: ${request.description}.`,
+          `Share this one-time approval PIN with them: ${pin}`,
+          "The PIN expires in 5 minutes and authorizes only this specific change once. If you did not authorize this request, do not share it.",
+        ].join("\n\n"),
+      });
+    } catch (mailError) {
+      await IntegrationSecurityGrant.deleteOne({ _id: grant._id });
+      console.error("Integration approval email error:", mailError);
+      return res.status(503).json({ error: "Unable to send the approval PIN to the super user." });
+    }
+
+    await logAudit({
+      req,
+      action: "INTEGRATION_CHANGE_APPROVAL_REQUESTED",
+      category: "system",
+      target: { entityType: "IntegrationSecurity", entityId: String(grant._id), name: request.description },
+      description: `Requested super-user approval for ${request.description}.`,
+      details: { action: request.action, superUserId: String(superUser._id) },
+    });
+
+    return res.json({
+      success: true,
+      approvalId: String(grant._id),
+      expiresInSeconds: SECURITY_CODE_LIFETIME_MS / 1000,
+      message: "An approval PIN was emailed to the super user. It authorizes this exact change once.",
+    });
+  } catch (error) {
+    console.error("Integration approval request error:", error);
+    return res.status(500).json({ error: "Unable to request super-user approval." });
+  }
+});
+
+router.use(requireIntegrationAccess);
 
 router.get("/", async (req, res) => {
   try {
@@ -198,26 +474,9 @@ router.get("/", async (req, res) => {
 
 router.put("/custom-config", async (req, res) => {
   try {
-    const supplied = req.body?.customConfig;
-    if (!supplied || typeof supplied !== "object" || Array.isArray(supplied)) {
+    const updates = normalizedCustomConfig(req.body?.customConfig);
+    if (!updates) {
       return res.status(400).json({ error: "Provide custom configuration values to save." });
-    }
-
-    const updates = {};
-    for (const [key, value] of Object.entries(supplied)) {
-      if (!Object.hasOwn(CUSTOM_ENV_KEYS, key)) {
-        return res.status(400).json({ error: `Unsupported custom setting: ${key}` });
-      }
-      if (typeof value !== "string" || value.length > 4096) {
-        return res.status(400).json({ error: "Custom settings must be text values under 4,096 characters." });
-      }
-      updates[key] = key === "CUSTOM_EMAIL_APP_PASSWORD"
-        ? value.trim().replace(/\s+/g, "")
-        : value.trim();
-    }
-
-    if (!Object.keys(updates).length) {
-      return res.status(400).json({ error: "No custom settings were provided." });
     }
 
     if (Object.hasOwn(updates, "CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY")) {
@@ -231,6 +490,11 @@ router.put("/custom-config", async (req, res) => {
     }
 
     await validateCustomValues(updates);
+
+    const approved = await consumeApproval(req, { action: "custom-config", payload: updates });
+    if (!approved) {
+      return res.status(403).json({ error: "A valid, unused super-user PIN is required for this exact configuration change." });
+    }
     await saveCustomConfig(updates);
 
     logAudit({
@@ -294,6 +558,14 @@ router.patch("/", async (req, res) => {
     }
 
     const previous = await readSettings();
+    const approved = await consumeApproval(req, {
+      action: "toggle-setting",
+      payload: { key, value },
+    });
+    if (!approved) {
+      return res.status(403).json({ error: "A valid, unused super-user PIN is required for this exact integration change." });
+    }
+
     await IntegrationSetting.findOneAndUpdate(
       { key: "global" },
       {
