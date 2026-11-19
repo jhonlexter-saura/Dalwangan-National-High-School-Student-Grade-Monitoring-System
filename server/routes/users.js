@@ -353,16 +353,25 @@ router.patch("/me", requireAuth, async (req, res) => {
     }
 
     for (const field of allowedFields) {
-    if (!Object.hasOwn(req.body, field)) continue;
+      if (!Object.hasOwn(req.body, field)) continue;
 
-    if (typeof req.body[field] !== "string") {
-      return res.status(400).json({
-        error: `${field} must be a string`,
-      });
+      if (typeof req.body[field] !== "string") {
+        return res.status(400).json({
+          error: `${field} must be a string`,
+        });
+      }
+
+      if (field === "contactNumber" && req.body[field].trim()) {
+        const cleanedContact = req.body[field].trim();
+        if (!/^\d{11}$/.test(cleanedContact)) {
+          return res.status(400).json({
+            error: "Contact number must be strictly 11 digits",
+          });
+        }
+      }
+
+      user[field] = req.body[field].trim();
     }
-
-    user[field] = req.body[field].trim();
-  }
 
     // Keep the legacy name field for older pages and existing records.
     user.name = composeName(user, user.name || "");
@@ -577,6 +586,15 @@ router.patch("/:id", requireAdmin, async (req, res) => {
         return res.status(400).json({
           error: `${field} must be a string`,
         });
+      }
+
+      if (field === "contactNumber" && body[field].trim()) {
+        const cleanedContact = body[field].trim();
+        if (!/^\d{11}$/.test(cleanedContact)) {
+          return res.status(400).json({
+            error: "Contact number must be strictly 11 digits",
+          });
+        }
       }
 
       user[field] = body[field].trim();

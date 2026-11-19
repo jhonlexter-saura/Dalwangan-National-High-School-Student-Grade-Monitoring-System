@@ -107,6 +107,8 @@ function ResetPassword() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="At least 8 characters"
                   autoComplete="new-password"
+                  minLength={8}
+                  maxLength={128}
                   required
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
@@ -127,6 +129,8 @@ function ResetPassword() {
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Re-enter your new password"
                   autoComplete="new-password"
+                  minLength={8}
+                  maxLength={128}
                   required
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />

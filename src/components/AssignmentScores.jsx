@@ -347,7 +347,12 @@ export default function AssignmentScores({ admin = false }) {
                           max={activeActivity.totalPoints}
                           step="any"
                           value={scores[id]?.score ?? ""}
-                          onKeyDown={(event) => moveScoreFocus(event, index)}
+                          onKeyDown={(event) => {
+                            if (["e", "E", "+", "-"].includes(event.key)) {
+                              event.preventDefault();
+                            }
+                            moveScoreFocus(event, index);
+                          }}
                           onChange={(event) => {
                             const value = event.target.value;
                             setScores((old) => ({ ...old, [id]: { ...old[id], score: value } }));

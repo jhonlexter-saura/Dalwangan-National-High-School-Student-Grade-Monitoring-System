@@ -229,6 +229,7 @@ export default function StudentInviteManager({
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
+          maxLength={100}
           placeholder="Search by student name, ID, or email..."
           className="w-full rounded-xl border border-gray-300 bg-white py-2.5 pl-10 pr-9 text-sm text-gray-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
         />

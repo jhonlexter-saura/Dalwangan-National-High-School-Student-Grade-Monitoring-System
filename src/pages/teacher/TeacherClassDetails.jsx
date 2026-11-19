@@ -361,6 +361,7 @@ export default function TeacherClassDetails() {
                 type="text"
                 value={studentSearch}
                 onChange={(e) => setStudentSearch(e.target.value)}
+                maxLength={100}
                 placeholder="Search students..."
                 className="w-full rounded-lg border border-gray-300 py-1.5 pl-8 pr-7 text-xs text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />

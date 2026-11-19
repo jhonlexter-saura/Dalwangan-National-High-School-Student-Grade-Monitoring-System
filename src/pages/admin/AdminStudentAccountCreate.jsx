@@ -17,7 +17,7 @@ export default function AdminStudentAccountCreate() {
     const { name, value } = event.target;
     setFormData((current) => ({
       ...current,
-      [name]: name === "studentId" ? value.slice(0, STUDENT_ID_MAX_LENGTH) : value,
+      [name]: name === "studentId" ? value.replace(/\D/g, "").slice(0, STUDENT_ID_MAX_LENGTH) : value,
     }));
   };
 
@@ -29,8 +29,8 @@ export default function AdminStudentAccountCreate() {
       setError("Enter the LRN, student name, email address, and temporary password.");
       return;
     }
-    if (formData.studentId.trim().length > STUDENT_ID_MAX_LENGTH) {
-      setError(`LRN must be ${STUDENT_ID_MAX_LENGTH} characters or fewer.`);
+    if (formData.studentId.trim().length !== STUDENT_ID_MAX_LENGTH) {
+      setError(`LRN must be exactly ${STUDENT_ID_MAX_LENGTH} digits.`);
       return;
     }
     if (formData.password.length < 6) {
@@ -73,24 +73,24 @@ export default function AdminStudentAccountCreate() {
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label htmlFor="studentId" className="mb-1 block text-sm font-medium text-gray-700">LRN <span className="text-red-600">*</span></label>
-            <input id="studentId" type="text" name="studentId" value={formData.studentId} onChange={handleChange} maxLength={STUDENT_ID_MAX_LENGTH} inputMode="numeric" placeholder="Enter learner reference number" autoComplete="off" required className={inputClass} />
+            <label htmlFor="studentId" className="mb-1 block text-sm font-medium text-gray-700">LRN (12 digits) <span className="text-red-600">*</span></label>
+            <input id="studentId" type="text" name="studentId" value={formData.studentId} onChange={handleChange} minLength={STUDENT_ID_MAX_LENGTH} maxLength={STUDENT_ID_MAX_LENGTH} pattern="[0-9]{12}" title="12-digit Learner Reference Number" inputMode="numeric" placeholder="Enter learner reference number (12 digits)" autoComplete="off" required className={inputClass} />
           </div>
 
           <div>
             <label htmlFor="name" className="mb-1 block text-sm font-medium text-gray-700">Student Name <span className="text-red-600">*</span></label>
-            <input id="name" type="text" name="name" value={formData.name} onChange={handleChange} placeholder="Juan Dela Cruz" autoComplete="name" required className={inputClass} />
+            <input id="name" type="text" name="name" value={formData.name} onChange={handleChange} minLength={2} maxLength={100} placeholder="Juan Dela Cruz" autoComplete="name" required className={inputClass} />
           </div>
 
           <div>
             <label htmlFor="email" className="mb-1 block text-sm font-medium text-gray-700">Email Address <span className="text-red-600">*</span></label>
-            <input id="email" type="email" name="email" value={formData.email} onChange={handleChange} placeholder="student@example.com" autoComplete="email" required className={inputClass} />
+            <input id="email" type="email" name="email" value={formData.email} onChange={handleChange} minLength={5} maxLength={100} placeholder="student@example.com" autoComplete="email" required className={inputClass} />
           </div>
 
           <div>
             <label htmlFor="password" className="mb-1 block text-sm font-medium text-gray-700">Temporary Password <span className="text-red-600">*</span></label>
             <div className="relative">
-              <input id="password" type={showPassword ? "text" : "password"} name="password" value={formData.password} onChange={handleChange} placeholder="Set an initial password" autoComplete="new-password" minLength={6} required className={`${inputClass} pr-11`} />
+              <input id="password" type={showPassword ? "text" : "password"} name="password" value={formData.password} onChange={handleChange} placeholder="Set an initial password" autoComplete="new-password" minLength={6} maxLength={128} required className={`${inputClass} pr-11`} />
               <button type="button" onClick={() => setShowPassword((visible) => !visible)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700" aria-label={showPassword ? "Hide password" : "Show password"}>
                 {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
               </button>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import CodeInput from "../../components/ui/CodeInput";
 import {
   Fingerprint,
   Globe,
@@ -479,9 +480,9 @@ function AdminIntegrations() {
           <ConfigBadge active={Boolean(customConfig.CUSTOM_GOOGLE_CLIENT_ID?.configured || customConfig.CUSTOM_VITE_GOOGLE_CLIENT_ID?.configured || customConfig.CUSTOM_GOOGLE_CLIENT_SECRET?.configured)} />
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className="block text-sm font-medium text-slate-700">Google OAuth Client ID<input type="text" autoComplete="off" value={draft.googleClientId} onChange={(e) => setDraft({ ...draft, googleClientId: e.target.value })} placeholder={customConfig.CUSTOM_GOOGLE_CLIENT_ID?.configured || customConfig.CUSTOM_VITE_GOOGLE_CLIENT_ID?.configured ? "Saved · enter a replacement" : "…apps.googleusercontent.com"} className={inputClass} /></label>
-          <label className="block text-sm font-medium text-slate-700">Google OAuth Client Secret<input type="password" autoComplete="new-password" value={draft.googleClientSecret} onChange={(e) => setDraft({ ...draft, googleClientSecret: e.target.value })} placeholder={customConfig.CUSTOM_GOOGLE_CLIENT_SECRET?.configured ? "Saved securely · enter a replacement" : "Server-side client secret"} className={inputClass} /></label>
-          <label className="block text-sm font-medium text-slate-700 sm:col-span-2">Google token encryption key<input type="password" autoComplete="new-password" value={draft.googleTokenKey} onChange={(e) => setDraft({ ...draft, googleTokenKey: e.target.value })} placeholder={customConfig.CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY?.configured ? "Saved securely · enter a replacement" : "At least 32 characters · keep this key stable"} className={inputClass} /></label>
+          <label className="block text-sm font-medium text-slate-700">Google OAuth Client ID<input type="text" autoComplete="off" minLength={10} maxLength={255} value={draft.googleClientId} onChange={(e) => setDraft({ ...draft, googleClientId: e.target.value })} placeholder={customConfig.CUSTOM_GOOGLE_CLIENT_ID?.configured || customConfig.CUSTOM_VITE_GOOGLE_CLIENT_ID?.configured ? "Saved · enter a replacement" : "…apps.googleusercontent.com"} className={inputClass} /></label>
+          <label className="block text-sm font-medium text-slate-700">Google OAuth Client Secret<input type="password" autoComplete="new-password" minLength={10} maxLength={255} value={draft.googleClientSecret} onChange={(e) => setDraft({ ...draft, googleClientSecret: e.target.value })} placeholder={customConfig.CUSTOM_GOOGLE_CLIENT_SECRET?.configured ? "Saved securely · enter a replacement" : "Server-side client secret"} className={inputClass} /></label>
+          <label className="block text-sm font-medium text-slate-700 sm:col-span-2">Google token encryption key<input type="password" autoComplete="new-password" minLength={32} maxLength={255} value={draft.googleTokenKey} onChange={(e) => setDraft({ ...draft, googleTokenKey: e.target.value })} placeholder={customConfig.CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY?.configured ? "Saved securely · enter a replacement" : "At least 32 characters · keep this key stable"} className={inputClass} /></label>
         </div>
         <p className="text-xs leading-5 text-slate-500">The client ID is public. The client secret and encryption key stay on the server and are never shown after saving. Keep the encryption key stable so saved Google connections remain usable. Configure the OAuth redirect URL as your server's /api/v1/integrations/google/callback address.</p>
         <ConfigActions busy={savingKey === "google"} locked={actionLocked} configured={Boolean(customConfig.CUSTOM_GOOGLE_CLIENT_ID?.configured || customConfig.CUSTOM_VITE_GOOGLE_CLIENT_ID?.configured || customConfig.CUSTOM_GOOGLE_CLIENT_SECRET?.configured || customConfig.CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY?.configured)} onSave={() => saveCustom("google", { CUSTOM_GOOGLE_CLIENT_ID: draft.googleClientId, CUSTOM_VITE_GOOGLE_CLIENT_ID: draft.googleClientId, CUSTOM_GOOGLE_CLIENT_SECRET: draft.googleClientSecret, CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY: draft.googleTokenKey })} onReset={() => saveCustom("google", { CUSTOM_GOOGLE_CLIENT_ID: "", CUSTOM_VITE_GOOGLE_CLIENT_ID: "", CUSTOM_GOOGLE_CLIENT_SECRET: "", CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY: "" })} disabled={!draft.googleClientId.trim() || !draft.googleClientSecret.trim() || draft.googleTokenKey.trim().length < 32} />
@@ -503,8 +504,8 @@ function AdminIntegrations() {
           <ConfigBadge active={Boolean(customConfig.CUSTOM_RECAPTCHA_SECRET_KEY?.configured || customConfig.CUSTOM_VITE_RECAPTCHA_SITE_KEY?.configured)} />
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className="block text-sm font-medium text-slate-700">Site key<input type="text" autoComplete="off" value={draft.recaptchaSiteKey} onChange={(e) => setDraft({ ...draft, recaptchaSiteKey: e.target.value })} placeholder={customConfig.CUSTOM_VITE_RECAPTCHA_SITE_KEY?.configured ? "Saved · enter a replacement" : "Public site key"} className={inputClass} /></label>
-          <label className="block text-sm font-medium text-slate-700">Secret key<input type="password" autoComplete="new-password" value={draft.recaptchaSecretKey} onChange={(e) => setDraft({ ...draft, recaptchaSecretKey: e.target.value })} placeholder={customConfig.CUSTOM_RECAPTCHA_SECRET_KEY?.configured ? "Saved securely · enter a replacement" : "Private server key"} className={inputClass} /></label>
+          <label className="block text-sm font-medium text-slate-700">Site key<input type="text" autoComplete="off" minLength={10} maxLength={255} value={draft.recaptchaSiteKey} onChange={(e) => setDraft({ ...draft, recaptchaSiteKey: e.target.value })} placeholder={customConfig.CUSTOM_VITE_RECAPTCHA_SITE_KEY?.configured ? "Saved · enter a replacement" : "Public site key"} className={inputClass} /></label>
+          <label className="block text-sm font-medium text-slate-700">Secret key<input type="password" autoComplete="new-password" minLength={10} maxLength={255} value={draft.recaptchaSecretKey} onChange={(e) => setDraft({ ...draft, recaptchaSecretKey: e.target.value })} placeholder={customConfig.CUSTOM_RECAPTCHA_SECRET_KEY?.configured ? "Saved securely · enter a replacement" : "Private server key"} className={inputClass} /></label>
         </div>
         <p className="text-xs leading-5 text-slate-500">Keys are checked for format; Google verifies the key pair when a user completes the login challenge.</p>
         <ConfigActions busy={savingKey === "recaptcha"} locked={actionLocked} configured={Boolean(customConfig.CUSTOM_RECAPTCHA_SECRET_KEY?.configured || customConfig.CUSTOM_VITE_RECAPTCHA_SITE_KEY?.configured)} onSave={() => saveCustom("recaptcha", { CUSTOM_RECAPTCHA_SECRET_KEY: draft.recaptchaSecretKey, CUSTOM_VITE_RECAPTCHA_SITE_KEY: draft.recaptchaSiteKey })} onReset={() => saveCustom("recaptcha", { CUSTOM_RECAPTCHA_SECRET_KEY: "", CUSTOM_VITE_RECAPTCHA_SITE_KEY: "" })} disabled={!draft.recaptchaSiteKey.trim() || !draft.recaptchaSecretKey.trim()} />
@@ -526,8 +527,8 @@ function AdminIntegrations() {
           <ConfigBadge active={Boolean(customConfig.CUSTOM_EMAIL_USER?.configured || customConfig.CUSTOM_EMAIL_APP_PASSWORD?.configured)} />
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className="block text-sm font-medium text-slate-700">Gmail account<input type="email" autoComplete="off" value={draft.emailUser} onChange={(e) => setDraft({ ...draft, emailUser: e.target.value })} placeholder={customConfig.CUSTOM_EMAIL_USER?.configured ? "Saved · enter a replacement" : "name@gmail.com"} className={inputClass} /></label>
-          <label className="block text-sm font-medium text-slate-700">Gmail app password<input type="password" autoComplete="new-password" value={draft.emailPassword} onChange={(e) => setDraft({ ...draft, emailPassword: e.target.value })} placeholder={customConfig.CUSTOM_EMAIL_APP_PASSWORD?.configured ? "Saved securely · enter a replacement" : "16-character app password"} className={inputClass} /></label>
+          <label className="block text-sm font-medium text-slate-700">Gmail account<input type="email" autoComplete="off" minLength={5} maxLength={100} value={draft.emailUser} onChange={(e) => setDraft({ ...draft, emailUser: e.target.value })} placeholder={customConfig.CUSTOM_EMAIL_USER?.configured ? "Saved · enter a replacement" : "name@gmail.com"} className={inputClass} /></label>
+          <label className="block text-sm font-medium text-slate-700">Gmail app password<input type="password" autoComplete="new-password" minLength={8} maxLength={100} value={draft.emailPassword} onChange={(e) => setDraft({ ...draft, emailPassword: e.target.value })} placeholder={customConfig.CUSTOM_EMAIL_APP_PASSWORD?.configured ? "Saved securely · enter a replacement" : "16-character app password"} className={inputClass} /></label>
         </div>
         <p className="text-xs leading-5 text-slate-500">Credentials are checked with Gmail before saving. Blank fields keep the existing value; use the reset button to remove both custom overrides.</p>
         <ConfigActions busy={savingKey === "email"} locked={actionLocked} configured={Boolean(customConfig.CUSTOM_EMAIL_USER?.configured || customConfig.CUSTOM_EMAIL_APP_PASSWORD?.configured)} onSave={() => saveCustom("email", { CUSTOM_EMAIL_USER: draft.emailUser, CUSTOM_EMAIL_APP_PASSWORD: draft.emailPassword })} onReset={() => saveCustom("email", { CUSTOM_EMAIL_USER: "", CUSTOM_EMAIL_APP_PASSWORD: "" })} disabled={!draft.emailUser.trim() || !draft.emailPassword.trim()} />
@@ -557,19 +558,60 @@ function AdminIntegrations() {
           {!accessChallengeId ? (
             <label className="block text-sm font-medium text-slate-700">
               Developer / super-user email
-              <input type="email" autoComplete="email" required value={accessEmail} onChange={(event) => setAccessEmail(event.target.value)} className={inputClass} />
+              <input
+                type="email"
+                autoComplete="email"
+                minLength={5}
+                maxLength={100}
+                required
+                value={accessEmail}
+                onChange={(event) => setAccessEmail(event.target.value)}
+                className={inputClass}
+              />
             </label>
           ) : (
-            <>
+            <div className="space-y-4">
               <p className="text-sm text-slate-600">The code was sent to the configured super user for secure relay. It expires in 5 minutes.</p>
-              <label className="block text-sm font-medium text-slate-700">
-                8-digit verification code
-                <input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={8} pattern="[0-9]{8}" required value={accessCode} onChange={(event) => setAccessCode(event.target.value.replace(/\D/g, "").slice(0, 8))} className={inputClass} />
-              </label>
-              <button type="button" onClick={() => { setAccessChallengeId(""); setAccessCode(""); setSecurityError(""); }} className="text-sm font-medium text-blue-700 hover:text-blue-900">Use a different super-user email</button>
-            </>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 text-center mb-2">
+                  8-digit verification code
+                </label>
+                <CodeInput
+                  id="access-otp-input"
+                  ariaLabel="8-digit verification code"
+                  length={8}
+                  value={accessCode}
+                  onChange={(val) => setAccessCode(val)}
+                  disabled={accessBusy}
+                  hasError={Boolean(securityError)}
+                  autoFocus
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => { setAccessChallengeId(""); setAccessCode(""); setSecurityError(""); }}
+                  className="text-sm font-medium text-blue-700 hover:text-blue-900"
+                >
+                  Use a different super-user email
+                </button>
+                {accessCode && (
+                  <button
+                    type="button"
+                    onClick={() => setAccessCode("")}
+                    className="text-xs text-slate-400 hover:text-slate-600"
+                  >
+                    Clear code
+                  </button>
+                )}
+              </div>
+            </div>
           )}
-          <button type="submit" disabled={accessBusy} className="w-full rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50">
+          <button
+            type="submit"
+            disabled={accessBusy || (!accessChallengeId ? !accessEmail.trim() : accessCode.length !== 8)}
+            className="w-full rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
             {accessBusy ? "Verifying…" : accessChallengeId ? "Verify and open integrations" : "Request verification code"}
           </button>
         </form>
@@ -832,7 +874,7 @@ function AdminIntegrations() {
           </div>
           {expandedConfig["tokenSecret"] && (
             <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5">
-              <label className="block text-sm font-medium text-slate-700">Custom secret<input type="password" autoComplete="new-password" value={draft.tokenSecret} onChange={(e) => setDraft({ ...draft, tokenSecret: e.target.value })} placeholder={customConfig.CUSTOM_AUTH_TOKEN_SECRET?.configured ? "Saved securely · enter a replacement" : "Enter at least 32 characters"} className={inputClass} /></label>
+              <label className="block text-sm font-medium text-slate-700">Custom secret<input type="password" autoComplete="new-password" minLength={32} maxLength={255} value={draft.tokenSecret} onChange={(e) => setDraft({ ...draft, tokenSecret: e.target.value })} placeholder={customConfig.CUSTOM_AUTH_TOKEN_SECRET?.configured ? "Saved securely · enter a replacement" : "Enter at least 32 characters"} className={inputClass} /></label>
               <p className="mt-2 text-xs leading-5 text-amber-800">Requires at least 32 characters and a server restart. Existing sessions will need to sign in again after the new secret takes effect.</p>
               <ConfigActions busy={savingKey === "token"} locked={actionLocked} configured={Boolean(customConfig.CUSTOM_AUTH_TOKEN_SECRET?.configured)} onSave={() => saveCustom("token", { CUSTOM_AUTH_TOKEN_SECRET: draft.tokenSecret })} onReset={() => saveCustom("token", { CUSTOM_AUTH_TOKEN_SECRET: "" })} disabled={!draft.tokenSecret.trim()} />
             </div>
@@ -903,10 +945,21 @@ function AdminIntegrations() {
               <p className="mt-1 text-sm leading-6 text-slate-600">A one-time PIN was emailed to the super user. Ask them to relay it to approve this exact change. The PIN expires in 5 minutes and can be used once.</p>
             </div>
             {approval.error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{approval.error}</p>}
-            <label className="block text-sm font-medium text-slate-700">
-              8-digit SU PIN
-              <input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={8} pattern="[0-9]{8}" required value={approval.pin} onChange={(event) => setApproval((current) => ({ ...current, pin: event.target.value.replace(/\D/g, "").slice(0, 8) }))} className={inputClass} />
-            </label>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 text-center mb-2">
+                8-digit SU PIN
+              </label>
+              <CodeInput
+                id="su-pin-input"
+                ariaLabel="8-digit Super-User PIN"
+                length={8}
+                value={approval.pin}
+                onChange={(pin) => setApproval((current) => ({ ...current, pin }))}
+                disabled={approvalBusy}
+                hasError={Boolean(approval.error)}
+                autoFocus
+              />
+            </div>
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setApproval(null)} disabled={approvalBusy} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
               <button type="submit" disabled={approvalBusy || approval.pin.length !== 8} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50">{approvalBusy ? "Verifying…" : "Approve and apply change"}</button>

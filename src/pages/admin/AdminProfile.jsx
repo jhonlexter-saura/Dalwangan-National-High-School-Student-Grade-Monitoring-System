@@ -32,9 +32,10 @@ function AdminProfile() {
   }, [user]);
 
   const handleChange = (e) => {
+    const { name, value } = e.target;
     setFormData((prev) => ({
       ...prev,
-      [e.target.name]: e.target.value,
+      [name]: name === "contactNumber" ? value.replace(/\D/g, "").slice(0, 11) : value,
     }));
   };
 
@@ -60,6 +61,12 @@ function AdminProfile() {
 
     if (!userId) {
       setError("User ID not found in current session. Please log in again.");
+      setLoading(false);
+      return;
+    }
+
+    if (formData.contactNumber && formData.contactNumber.length !== 11) {
+      setError("Contact number must be exactly 11 digits.");
       setLoading(false);
       return;
     }
@@ -162,6 +169,8 @@ function AdminProfile() {
                 name="name"
                 value={formData.name}
                 onChange={handleChange}
+                minLength={2}
+                maxLength={100}
                 required
                 className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
@@ -177,6 +186,8 @@ function AdminProfile() {
                 name="email"
                 value={formData.email}
                 onChange={handleChange}
+                minLength={5}
+                maxLength={100}
                 required
                 className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
@@ -184,15 +195,20 @@ function AdminProfile() {
 
             <div>
               <label htmlFor="contactNumber" className="block text-sm font-medium text-gray-700">
-                Contact Number <span className="text-xs text-gray-400">(Optional)</span>
+                Contact Number <span className="text-xs text-gray-400">(11 digits, Optional)</span>
               </label>
               <input
-                type="text"
+                type="tel"
+                inputMode="numeric"
                 id="contactNumber"
                 name="contactNumber"
                 placeholder="e.g. 09123456789"
                 value={formData.contactNumber}
                 onChange={handleChange}
+                minLength={11}
+                maxLength={11}
+                pattern="[0-9]{11}"
+                title="11-digit mobile number"
                 className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
@@ -208,6 +224,8 @@ function AdminProfile() {
                 placeholder="e.g. Brgy. Dalwangan, Malaybalay City"
                 value={formData.address}
                 onChange={handleChange}
+                minLength={3}
+                maxLength={255}
                 className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
@@ -363,8 +381,8 @@ function PasskeyManagement() {
       <section role="dialog" aria-modal="true" aria-labelledby="passkey-dialog-title" className="w-full max-w-md rounded-xl bg-white p-5 shadow-2xl sm:p-6">
         <div className="flex items-start justify-between gap-3"><div><h2 id="passkey-dialog-title" className="text-lg font-bold text-slate-900">{adding ? "Add a passkey" : "Remove passkey"}</h2><p className="mt-1 text-sm text-slate-600">{adding ? "Confirm your password, then follow your device's security prompt." : `Remove “${removeTarget?.deviceName}” from this account? Password sign-in will remain available.`}</p></div><button type="button" onClick={closePasskeyDialog} disabled={busy} className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 disabled:opacity-50" aria-label="Close dialog"><X size={18} /></button></div>
         <form onSubmit={adding ? addPasskey : removePasskey} className="mt-5 space-y-4">
-          {adding && <label className="block text-sm font-medium text-slate-700">Device name<input autoFocus required maxLength={80} value={deviceName} onChange={(event) => setDeviceName(event.target.value)} placeholder="e.g. Office laptop" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100" /></label>}
-          <label className="block text-sm font-medium text-slate-700">Current password<input autoFocus={!adding} required type="password" autoComplete="current-password" value={adding ? registrationPassword : removalPassword} onChange={(event) => adding ? setRegistrationPassword(event.target.value) : setRemovalPassword(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100" /></label>
+          {adding && <label className="block text-sm font-medium text-slate-700">Device name<input autoFocus required minLength={2} maxLength={80} value={deviceName} onChange={(event) => setDeviceName(event.target.value)} placeholder="e.g. Office laptop" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100" /></label>}
+          <label className="block text-sm font-medium text-slate-700">Current password<input autoFocus={!adding} required minLength={6} maxLength={128} type="password" autoComplete="current-password" value={adding ? registrationPassword : removalPassword} onChange={(event) => adding ? setRegistrationPassword(event.target.value) : setRemovalPassword(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100" /></label>
           {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
           <div className="flex justify-end gap-2 pt-1"><button type="button" onClick={closePasskeyDialog} disabled={busy} className="rounded-lg border border-slate-300 px-3.5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancel</button><button type="submit" disabled={busy} className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-semibold text-white disabled:opacity-50 ${adding ? "bg-blue-700 hover:bg-blue-800" : "bg-red-700 hover:bg-red-800"}`}>{busy && <Loader2 size={15} className="animate-spin" />}{busy ? "Please wait…" : adding ? "Continue" : "Confirm removal"}</button></div>
         </form>

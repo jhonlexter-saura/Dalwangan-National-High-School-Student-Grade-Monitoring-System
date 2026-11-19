@@ -367,6 +367,7 @@ export default function AdminClasses() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              maxLength={100}
               placeholder="Search by class name, section, subject, or teacher..."
               className="w-full rounded-lg border border-gray-300 py-2.5 pl-10 pr-9 text-sm text-gray-900 placeholder-gray-400 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
@@ -694,6 +695,8 @@ export default function AdminClasses() {
                   name="name"
                   value={classForm.name}
                   onChange={handleClassChange}
+                  minLength={2}
+                  maxLength={80}
                   placeholder="e.g. Grade 10 - ICT or Grade 7 - Aguinaldo"
                   required
                   className="mt-1.5 w-full rounded-xl border border-gray-300 px-3.5 py-2.5 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
@@ -756,6 +759,8 @@ export default function AdminClasses() {
                         setCustomSection(e.target.value);
                         setClassForm((prev) => ({ ...prev, section: e.target.value }));
                       }}
+                      minLength={1}
+                      maxLength={50}
                       placeholder="Type custom section name"
                       required
                       className="mt-2 w-full rounded-lg border border-blue-400 bg-blue-50/20 px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-blue-100"

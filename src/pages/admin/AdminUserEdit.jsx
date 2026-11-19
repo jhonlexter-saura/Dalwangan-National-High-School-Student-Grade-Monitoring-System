@@ -102,7 +102,7 @@ export default function AdminUserEdit() {
     const { name, value } = event.target;
     setFormData((current) => ({
       ...current,
-      [name]: name === "studentId" ? value.slice(0, STUDENT_ID_MAX_LENGTH) : value,
+      [name]: name === "studentId" ? value.replace(/\D/g, "").slice(0, STUDENT_ID_MAX_LENGTH) : value,
     }));
   };
 
@@ -120,8 +120,8 @@ export default function AdminUserEdit() {
     }
 
     if (role === "student") {
-      if (formData.studentId.trim().length > STUDENT_ID_MAX_LENGTH) {
-        setError(`LRN must be ${STUDENT_ID_MAX_LENGTH} characters or fewer.`);
+      if (formData.studentId.trim().length !== STUDENT_ID_MAX_LENGTH) {
+        setError(`LRN must be exactly ${STUDENT_ID_MAX_LENGTH} digits.`);
         return;
       }
       if (
@@ -230,6 +230,8 @@ export default function AdminUserEdit() {
               name="name"
               value={formData.name}
               onChange={handleChange}
+              minLength={2}
+              maxLength={100}
               required
               disabled={saving}
               autoComplete="name"
@@ -243,6 +245,8 @@ export default function AdminUserEdit() {
               name="email"
               value={formData.email}
               onChange={handleChange}
+              minLength={5}
+              maxLength={100}
               required
               disabled={saving}
               autoComplete="email"
@@ -251,14 +255,17 @@ export default function AdminUserEdit() {
 
           {role === "student" && (
             <>
-              <Field label="LRN">
+              <Field label="LRN (12 digits)">
                 <input
                   className={inputClassName}
                   type="text"
                   name="studentId"
                   value={formData.studentId}
                   onChange={handleChange}
+                  minLength={STUDENT_ID_MAX_LENGTH}
                   maxLength={STUDENT_ID_MAX_LENGTH}
+                  pattern="[0-9]{12}"
+                  title="12-digit Learner Reference Number"
                   inputMode="numeric"
                   required
                   disabled={saving}
@@ -291,6 +298,8 @@ export default function AdminUserEdit() {
                     name="section"
                     value={formData.section}
                     onChange={handleChange}
+                    minLength={1}
+                    maxLength={50}
                     required
                     disabled={saving}
                   />
@@ -304,6 +313,9 @@ export default function AdminUserEdit() {
                   name="schoolYear"
                   value={formData.schoolYear}
                   onChange={handleChange}
+                  minLength={9}
+                  maxLength={9}
+                  pattern="[0-9]{4}-[0-9]{4}"
                   required
                   disabled={saving}
                   placeholder="2026-2027"

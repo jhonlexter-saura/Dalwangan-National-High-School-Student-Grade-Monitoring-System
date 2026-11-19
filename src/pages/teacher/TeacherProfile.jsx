@@ -28,6 +28,10 @@ function Field({
   value,
   onChange,
   inputClass,
+  type = "text",
+  minLength,
+  maxLength,
+  ...props
 }) {
   return (
     <label className="block text-sm font-medium text-gray-700">
@@ -37,12 +41,16 @@ function Field({
       )}
 
       <input
+        type={type}
         className={inputClass}
         name={name}
         value={value}
         onChange={onChange}
         placeholder={placeholder}
         required={required}
+        minLength={minLength}
+        maxLength={maxLength}
+        {...props}
       />
     </label>
   );
@@ -102,7 +110,7 @@ function TeacherProfile() {
 
     setForm((current) => ({
       ...current,
-      [name]: value,
+      [name]: name === "contactNumber" ? value.replace(/\D/g, "").slice(0, 11) : value,
     }));
 
     setError("");
@@ -115,6 +123,11 @@ function TeacherProfile() {
 
     if (!form.firstName.trim() || !form.lastName.trim()) {
       setError("First name and last name are required.");
+      return;
+    }
+
+    if (form.contactNumber && form.contactNumber.trim().length !== 11) {
+      setError("Contact number must be exactly 11 digits.");
       return;
     }
 
@@ -205,6 +218,8 @@ function TeacherProfile() {
             name="firstName"
             placeholder="Enter first name"
             required
+            minLength={2}
+            maxLength={50}
             value={form.firstName}
             onChange={handleChange}
             inputClass={inputClass}
@@ -214,6 +229,7 @@ function TeacherProfile() {
             label="Middle name"
             name="middleName"
             placeholder="Enter middle name (optional)"
+            maxLength={50}
             value={form.middleName}
             onChange={handleChange}
             inputClass={inputClass}
@@ -224,6 +240,8 @@ function TeacherProfile() {
             name="lastName"
             placeholder="Enter last name"
             required
+            minLength={2}
+            maxLength={50}
             value={form.lastName}
             onChange={handleChange}
             inputClass={inputClass}
@@ -286,10 +304,15 @@ function TeacherProfile() {
             <input
               className={inputClass}
               type="tel"
+              inputMode="numeric"
               name="contactNumber"
               value={form.contactNumber}
               onChange={handleChange}
-              placeholder="Enter contact number"
+              minLength={11}
+              maxLength={11}
+              pattern="[0-9]{11}"
+              title="11-digit mobile number"
+              placeholder="09123456789 (11 digits)"
             />
           </label>
 
@@ -304,6 +327,7 @@ function TeacherProfile() {
               value={form.address}
               onChange={handleChange}
               placeholder="Enter your address"
+              maxLength={255}
               rows={3}
             />
           </label>

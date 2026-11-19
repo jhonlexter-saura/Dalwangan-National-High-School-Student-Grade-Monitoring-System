@@ -39,12 +39,21 @@ export default function StudentProfile() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({
+      ...prev,
+      [name]: name === "contactNumber" ? value.replace(/\D/g, "").slice(0, 11) : value,
+    }));
   };
 
   
 const handleSubmit = async (e) => {
   e.preventDefault();
+
+  if (formData.contactNumber && formData.contactNumber.trim().length !== 11) {
+    showToast("Contact number must be exactly 11 digits.", "error");
+    return;
+  }
+
   setLoading(true);
 
   try {
@@ -127,6 +136,8 @@ const handleSubmit = async (e) => {
               disabled={!isEditing}
               value={formData.name}
               onChange={handleChange}
+              minLength={2}
+              maxLength={100}
               className="mt-1 w-full rounded-lg border px-3.5 py-2.5 text-gray-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500"
               required
             />
@@ -142,6 +153,8 @@ const handleSubmit = async (e) => {
               value={formData.address}
               onChange={handleChange}
               placeholder="e.g. Kalasungay"
+              minLength={3}
+              maxLength={255}
               className="mt-1 w-full rounded-lg border px-3.5 py-2.5 text-gray-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500"
             />
           </div>
@@ -172,14 +185,19 @@ const handleSubmit = async (e) => {
 
           {/* Contact Number */}
           <div>
-            <label className="block text-sm font-medium text-gray-700">Contact Number</label>
+            <label className="block text-sm font-medium text-gray-700">Contact Number (11 digits)</label>
             <input
-              type="text"
+              type="tel"
+              inputMode="numeric"
               name="contactNumber"
               disabled={!isEditing}
               value={formData.contactNumber}
               onChange={handleChange}
               placeholder="e.g. 09123456789"
+              minLength={11}
+              maxLength={11}
+              pattern="[0-9]{11}"
+              title="11-digit mobile number"
               className="mt-1 w-full rounded-lg border px-3.5 py-2.5 text-gray-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500"
             />
           </div>

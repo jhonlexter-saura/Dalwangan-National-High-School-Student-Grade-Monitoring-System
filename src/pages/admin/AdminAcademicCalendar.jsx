@@ -210,10 +210,10 @@ export default function AdminAcademicCalendar() {
             </div>
             <form onSubmit={handleSubmit} className="mt-5 space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="School year"><input className={inputClassName} value={formData.schoolYear} onChange={(e) => setFormData({ ...formData, schoolYear: e.target.value })} placeholder="2026-2027" pattern="[0-9]{4}-[0-9]{4}" required /></Field>
+                <Field label="School year"><input className={inputClassName} value={formData.schoolYear} onChange={(e) => setFormData({ ...formData, schoolYear: e.target.value })} placeholder="2026-2027" minLength={9} maxLength={9} pattern="[0-9]{4}-[0-9]{4}" required /></Field>
                 <Field label="Status"><select className={inputClassName} value={formData.status} onChange={(e) => setFormData({ ...formData, status: e.target.value })}><option value="upcoming">Upcoming</option><option value="active">Active</option><option value="completed">Completed</option></select></Field>
                 <Field label="Term"><select className={inputClassName} value={formData.trimester} onChange={(e) => setFormData({ ...formData, trimester: e.target.value })}><option value="1">Trimester 1</option><option value="2">Trimester 2</option><option value="3">Trimester 3</option></select></Field>
-                <Field label="Term title"><input className={inputClassName} value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="1st Quarter / Trimester 1" required /></Field>
+                <Field label="Term title"><input className={inputClassName} value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} minLength={2} maxLength={60} placeholder="1st Quarter / Trimester 1" required /></Field>
                 <Field label="Start Date"><input type="date" className={inputClassName} value={formData.startDate} onChange={(e) => setFormData({ ...formData, startDate: e.target.value })} required /></Field>
                 <Field label="End Date"><input type="date" min={formData.startDate || undefined} className={inputClassName} value={formData.endDate} onChange={(e) => setFormData({ ...formData, endDate: e.target.value })} required /></Field>
               </div>

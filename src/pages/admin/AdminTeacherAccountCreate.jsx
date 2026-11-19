@@ -89,6 +89,8 @@ export default function AdminTeacherAccountCreate() {
               name="name"
               value={formData.name}
               onChange={handleChange}
+              minLength={2}
+              maxLength={100}
               required
               placeholder="Enter teacher name"
               className="w-full rounded-lg border border-gray-300 px-4 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
@@ -105,6 +107,8 @@ export default function AdminTeacherAccountCreate() {
               name="email"
               value={formData.email}
               onChange={handleChange}
+              minLength={5}
+              maxLength={100}
               required
               placeholder="teacher@example.com"
               className="w-full rounded-lg border border-gray-300 px-4 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
@@ -123,6 +127,7 @@ export default function AdminTeacherAccountCreate() {
               onChange={handleChange}
               required
               minLength={6}
+              maxLength={128}
               placeholder="At least 6 characters"
               className="w-full rounded-lg border border-gray-300 px-4 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />

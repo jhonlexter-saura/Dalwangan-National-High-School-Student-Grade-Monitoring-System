@@ -602,6 +602,7 @@ export default function AdminClassOverview() {
                 type="text"
                 value={studentSearch}
                 onChange={(e) => setStudentSearch(e.target.value)}
+                maxLength={100}
                 placeholder="Search student roster..."
                 className="w-full rounded-lg border border-gray-300 py-1.5 pl-8 pr-7 text-xs text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
@@ -862,6 +863,8 @@ export default function AdminClassOverview() {
                     onChange={(e) =>
                       setAssignmentForm((f) => ({ ...f, subject: e.target.value }))
                     }
+                    minLength={2}
+                    maxLength={80}
                     placeholder="e.g. Mathematics, Science, English"
                     className="mt-1.5 w-full rounded-xl border border-gray-300 px-3.5 py-2.5 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                     required
@@ -926,10 +929,20 @@ export default function AdminClassOverview() {
                         type="number"
                         min="0"
                         max="100"
+                        inputMode="numeric"
                         value={assignmentForm[key]}
-                        onChange={(e) =>
-                          setAssignmentForm((f) => ({ ...f, [key]: e.target.value }))
-                        }
+                        onKeyDown={(e) => {
+                          if (["e", "E", "+", "-", "."].includes(e.key)) {
+                            e.preventDefault();
+                          }
+                        }}
+                        onChange={(e) => {
+                          const v = e.target.value.replace(/\D/g, "");
+                          setAssignmentForm((f) => ({
+                            ...f,
+                            [key]: v ? String(Math.min(100, parseInt(v, 10))) : "",
+                          }));
+                        }}
                         className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
                         required
                       />

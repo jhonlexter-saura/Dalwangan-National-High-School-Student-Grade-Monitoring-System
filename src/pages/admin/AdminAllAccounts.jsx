@@ -99,6 +99,7 @@ export default function AdminAllAccounts() {
               type="search"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
+              maxLength={100}
               placeholder="Search by name or email"
               aria-label="Search accounts by name or email"
               className="w-full rounded-lg border border-gray-300 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
