@@ -9,10 +9,11 @@ import {
   Settings,
   LogOut,
   ChevronDown,
+  ArrowUpRight,
 } from "lucide-react";
 
 import { useAuth } from "../../context/AuthContext";
-import { getMyNotifications } from "../../services/schoolDataService";
+import { getMyNotifications, getAcademicPeriods } from "../../services/schoolDataService";
 
 /*
  * Palette pulled from the DNHS logo
@@ -30,6 +31,7 @@ function Header({ onMenuClick }) {
 
   const [profileOpen, setProfileOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [activePeriod, setActivePeriod] = useState(null);
   const profileRef = useRef(null);
 
   const roleName = {
@@ -39,6 +41,45 @@ function Header({ onMenuClick }) {
   };
 
   const displayName = user?.name || user?.username || "User";
+
+  // Philippine school year starts in June
+  const now = new Date();
+  const startYear = now.getMonth() >= 5 ? now.getFullYear() : now.getFullYear() - 1;
+  const defaultSchoolYear = `${startYear}–${startYear + 1}`;
+
+  const schoolYearText = activePeriod?.schoolYear
+    ? activePeriod.schoolYear.replace("-", "–")
+    : defaultSchoolYear;
+
+  const activeTermTitle = activePeriod
+    ? (activePeriod.name || `Trimester ${activePeriod.trimester}`)
+    : "Trimester 1";
+
+  const periodContext = `${activeTermTitle} · SY ${schoolYearText}`;
+
+  const userGreeting =
+    user?.firstName ||
+    (user?.role === "admin" ? "Admin" : null) ||
+    (user?.name ? user.name.trim().split(/\s+/)[0] : null) ||
+    roleName[user?.role] ||
+    "User";
+
+  useEffect(() => {
+    let isCurrent = true;
+    getAcademicPeriods()
+      .then((periods) => {
+        if (!isCurrent || !Array.isArray(periods) || periods.length === 0) return;
+        const active = periods.find((p) => p.status === "active") || periods[0];
+        if (active) setActivePeriod(active);
+      })
+      .catch(() => {
+        // Fallback to default school year and term context
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
 
   useEffect(() => {
     let isCurrent = true;
@@ -104,42 +145,48 @@ function Header({ onMenuClick }) {
         </button>
 
         <div className="hidden leading-tight sm:block">
-          <h2 className="text-lg font-bold tracking-tight text-[#000062]">
-            {roleName[user?.role] || "User"}
-          </h2>
-
-          <p className="text-xs text-gray-500">Welcome back</p>
+          <p className="whitespace-nowrap text-sm font-semibold text-[#000062]">
+            Welcome back, {userGreeting}
+          </p>
+          <p className="whitespace-nowrap text-xs text-slate-500">
+            {periodContext}
+          </p>
         </div>
       </div>
 
-      {/* Center - School Academic System Badge */}
+      {/* Center - School Academic Context Badge */}
       <div className="mx-4 hidden items-center gap-2 rounded-full border border-[#000062]/10 bg-[#000062]/5 px-3.5 py-1.5 md:flex">
-        <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-        <span className="text-xs font-semibold text-[#000062]">Dalwangan National High School</span>
+        <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-emerald-500" />
+        <span className="whitespace-nowrap text-xs font-semibold text-[#000062]">
+          Dalwangan National High School
+        </span>
         <span className="text-xs text-slate-400">·</span>
-        <span className="text-xs text-slate-600">Student Grade Monitoring System</span>
+        <span className="whitespace-nowrap text-xs text-slate-600">
+          SY {schoolYearText}
+        </span>
       </div>
 
       {/* Right side */}
       <div className="flex items-center gap-1 sm:gap-2">
-        {/* Quick Link to School Website / Homepage */}
+        {/* School Site — ghost button with external-link signal */}
         <Link
           to="/"
           title="View School Homepage"
-          className="hidden items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-[#000062] hover:bg-[#000062]/5 sm:flex transition"
+          className="hidden items-center gap-1 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium text-[#000062] transition hover:bg-slate-100 sm:flex"
         >
-          <Globe size={16} />
+          <Globe size={14} />
           <span>School Site</span>
+          <ArrowUpRight size={12} className="opacity-50" />
         </Link>
 
         <Link
           to={`/${user?.role}/notifications`}
-          className="relative rounded-lg p-2 text-[#000062] hover:bg-[#000062]/5"
+          className="relative flex h-9 w-9 items-center justify-center rounded-full text-[#000062] transition hover:bg-slate-100"
           aria-label={unreadCount ? `Notifications, ${unreadCount} unread` : "Notifications"}
         >
           <Bell size={20} />
           {unreadCount > 0 && (
-            <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white">
+            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white">
               {unreadCount > 9 ? "9+" : unreadCount}
             </span>
           )}
@@ -152,16 +199,16 @@ function Header({ onMenuClick }) {
         <div className="relative" ref={profileRef}>
           <button
             onClick={() => setProfileOpen((prev) => !prev)}
-            className="flex items-center gap-2.5 rounded-lg p-1.5 pr-2 hover:bg-[#000062]/5"
+            className="flex items-center gap-2 rounded-full p-1 pr-3 transition hover:bg-slate-50"
             aria-haspopup="menu"
             aria-expanded={profileOpen}
           >
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#000062] text-sm font-bold text-[#EABE3E] ring-2 ring-[#EABE3E]/60">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#000062] text-sm font-bold text-[#EABE3E] ring-2 ring-[#EABE3E]/60">
               {displayName.charAt(0).toUpperCase()}
             </span>
 
             <span className="hidden text-left leading-tight sm:block">
-              <span className="block max-w-[10rem] truncate text-sm font-medium text-[#000062]">
+              <span className="block max-w-[150px] truncate text-sm font-medium text-[#000062]">
                 {displayName}
               </span>
               <span className="block text-xs text-gray-500">
@@ -170,8 +217,8 @@ function Header({ onMenuClick }) {
             </span>
 
             <ChevronDown
-              size={16}
-              className={`hidden text-[#000062]/60 transition-transform sm:block ${
+              size={15}
+              className={`hidden shrink-0 text-[#000062]/60 transition-transform sm:block ${
                 profileOpen ? "rotate-180" : ""
               }`}
             />
