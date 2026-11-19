@@ -88,6 +88,14 @@ function Login() {
 
     return () => {
       mounted = false;
+
+      // Clean up reCAPTCHA script and badge when leaving auth pages
+      const scripts = document.querySelectorAll('script[src*="recaptcha"]');
+      scripts.forEach((s) => s.remove());
+      const badges = document.querySelectorAll(".grecaptcha-badge");
+      badges.forEach((b) => b.parentNode?.removeChild(b));
+      delete window.grecaptcha;
+      recaptchaScriptPromise = null;
     };
   }, []);
 

@@ -21,7 +21,7 @@ function Footer() {
           </div>
         </div>
 
-        <div className="text-xs text-slate-500 sm:text-right">
+        <div className="pr-20 text-xs text-slate-500 sm:text-right">
           <p>© {currentYear} Dalwangan National High School. All rights reserved.</p>
           <p className="text-[11px] text-slate-400">Department of Education · Division of Malaybalay City</p>
         </div>

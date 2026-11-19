@@ -136,7 +136,7 @@ function PublicFooter() {
         </div>
 
         {/* Bottom Sub-footer */}
-        <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-white/10 pt-8 text-xs text-slate-400 sm:flex-row">
+        <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-white/10 pt-8 text-xs text-slate-400 sm:flex-row sm:pr-20">
           <div className="flex items-center gap-2">
             <span>© {currentYear} Dalwangan National High School (DNHS-SGMS). All rights reserved.</span>
           </div>

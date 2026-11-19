@@ -159,6 +159,19 @@ export function createActivity(data) {
   });
 }
 
+export function updateActivity(activityId, data) {
+  return request(`/activities/${activityId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteActivity(activityId) {
+  return request(`/activities/${activityId}`, {
+    method: "DELETE",
+  });
+}
+
 // -----------------------------
 // Scores
 // -----------------------------

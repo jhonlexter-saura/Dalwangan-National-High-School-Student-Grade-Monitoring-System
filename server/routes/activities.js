@@ -182,9 +182,9 @@ router.post("/", requireAuthenticatedUser, lockGradebookForActivity, async (req,
     // Validate points
     const points = Number(totalPoints);
 
-    if (!Number.isFinite(points) || points <= 0) {
+    if (!Number.isFinite(points) || points < 1 || points > 1000) {
       return res.status(400).json({
-        error: "Total points must be a number greater than zero",
+        error: "Total points must be between 1 and 1000",
       });
     }
 
@@ -303,6 +303,113 @@ router.post("/", requireAuthenticatedUser, lockGradebookForActivity, async (req,
     return res.status(500).json({
       error: "Failed to create activity",
     });
+  }
+});
+
+// UPDATE activity
+router.put("/:id", requireAuthenticatedUser, async (req, res) => {
+  try {
+    const activity = await Activity.findById(req.params.id);
+    if (!activity) return res.status(404).json({ error: "Activity not found" });
+
+    const subjectAssignment = await SubjectAssignment.findById(activity.subjectAssignment).lean();
+    if (!subjectAssignment) return res.status(400).json({ error: "Subject assignment not found" });
+
+    if (req.authenticatedUser.role !== "admin") {
+      const teacher = await Teacher.findOne({ user: req.authenticatedUser._id }).select("_id").lean();
+      if (req.authenticatedUser.role !== "teacher" || !teacher || String(subjectAssignment.teacher) !== String(teacher._id)) {
+        return res.status(403).json({ error: "You can only edit activities for your subject assignments" });
+      }
+    }
+
+    const finalizedGradebook = await Gradebook.exists({
+      subjectAssignment: activity.subjectAssignment,
+      academicPeriod: activity.academicPeriod,
+    });
+    if (finalizedGradebook) {
+      return res.status(409).json({ error: "This gradebook is finalized. Ask an administrator to unlock it before editing activities." });
+    }
+
+    const { title, description, gradingCategory, type, totalPoints, date } = req.body;
+    if (title !== undefined) {
+      if (!title.trim()) return res.status(400).json({ error: "Title cannot be empty" });
+      activity.title = title.trim();
+    }
+    if (description !== undefined) activity.description = description.trim();
+    if (gradingCategory) activity.gradingCategory = gradingCategory;
+    if (type) activity.type = type;
+    if (totalPoints !== undefined) {
+      const points = Number(totalPoints);
+      if (!Number.isFinite(points) || points < 1 || points > 1000) {
+        return res.status(400).json({ error: "Total points must be between 1 and 1000" });
+      }
+      activity.totalPoints = points;
+    }
+    if (date) activity.date = date;
+
+    await activity.save();
+
+    const populated = await Activity.findById(activity._id)
+      .populate("class")
+      .populate("subjectAssignment")
+      .populate("academicPeriod");
+
+    logAudit({
+      req,
+      action: "ACTIVITY_UPDATED",
+      category: "activities",
+      target: { entityType: "Activity", entityId: String(activity._id), name: activity.title },
+      description: `Updated activity '${activity.title}'`,
+    });
+
+    return res.json(populated);
+  } catch (error) {
+    console.error("Error updating activity:", error);
+    if (error.name === "ValidationError") return res.status(400).json({ error: error.message });
+    return res.status(500).json({ error: "Failed to update activity" });
+  }
+});
+
+// DELETE activity
+router.delete("/:id", requireAuthenticatedUser, async (req, res) => {
+  try {
+    const activity = await Activity.findById(req.params.id);
+    if (!activity) return res.status(404).json({ error: "Activity not found" });
+
+    const subjectAssignment = await SubjectAssignment.findById(activity.subjectAssignment).lean();
+    if (!subjectAssignment) return res.status(400).json({ error: "Subject assignment not found" });
+
+    if (req.authenticatedUser.role !== "admin") {
+      const teacher = await Teacher.findOne({ user: req.authenticatedUser._id }).select("_id").lean();
+      if (req.authenticatedUser.role !== "teacher" || !teacher || String(subjectAssignment.teacher) !== String(teacher._id)) {
+        return res.status(403).json({ error: "You can only delete activities for your subject assignments" });
+      }
+    }
+
+    const finalizedGradebook = await Gradebook.exists({
+      subjectAssignment: activity.subjectAssignment,
+      academicPeriod: activity.academicPeriod,
+    });
+    if (finalizedGradebook) {
+      return res.status(409).json({ error: "This gradebook is finalized. Ask an administrator to unlock it before deleting activities." });
+    }
+
+    const Score = require("../models/Score");
+    await Score.deleteMany({ activity: activity._id });
+    await activity.deleteOne();
+
+    logAudit({
+      req,
+      action: "ACTIVITY_DELETED",
+      category: "activities",
+      target: { entityType: "Activity", entityId: String(req.params.id), name: activity.title },
+      description: `Deleted activity '${activity.title}' and its scores`,
+    });
+
+    return res.json({ message: "Activity and associated scores deleted" });
+  } catch (error) {
+    console.error("Error deleting activity:", error);
+    return res.status(500).json({ error: "Failed to delete activity" });
   }
 });
 
