@@ -133,9 +133,9 @@ function Header({ onMenuClick }) {
   };
 
   return (
-    <header className="flex h-20 shrink-0 items-center justify-between border-b border-[#EABE3E]/60 bg-white px-4 lg:px-8">
+    <header className="sticky top-0 z-30 flex h-20 shrink-0 items-center justify-between border-b border-[#EABE3E]/50 bg-white px-4 sm:px-6 lg:px-8">
       {/* Left side */}
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 items-center gap-3">
         <button
           onClick={onMenuClick}
           className="rounded-lg p-2 text-[#000062] hover:bg-[#000062]/5 lg:hidden"
@@ -144,26 +144,17 @@ function Header({ onMenuClick }) {
           <Menu size={22} />
         </button>
 
-        <div className="hidden leading-tight sm:block">
-          <p className="whitespace-nowrap text-sm font-semibold text-[#000062]">
+        <div className="hidden min-w-0 leading-tight sm:block">
+          <p className="truncate text-base font-semibold text-[#000062]">
             Welcome back, {userGreeting}
           </p>
-          <p className="whitespace-nowrap text-xs text-slate-500">
+          <p className="mt-0.5 flex items-center gap-1.5 whitespace-nowrap text-xs text-slate-500">
+            {activePeriod?.status === "active" && (
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+            )}
             {periodContext}
           </p>
         </div>
-      </div>
-
-      {/* Center - School Academic Context Badge */}
-      <div className="mx-4 hidden items-center gap-2 rounded-full border border-[#000062]/10 bg-[#000062]/5 px-3.5 py-1.5 md:flex">
-        <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-emerald-500" />
-        <span className="whitespace-nowrap text-xs font-semibold text-[#000062]">
-          Dalwangan National High School
-        </span>
-        <span className="text-xs text-slate-400">·</span>
-        <span className="whitespace-nowrap text-xs text-slate-600">
-          SY {schoolYearText}
-        </span>
       </div>
 
       {/* Right side */}
@@ -193,7 +184,7 @@ function Header({ onMenuClick }) {
         </Link>
 
         {/* Divider */}
-        <div className="mx-1 hidden h-8 w-px bg-gray-200 sm:block" />
+        <div className="-mr-3 flex items-center gap-2 rounded-full p-1 pr-3 transition hover:bg-slate-50" />
 
         {/* Profile menu */}
         <div className="relative" ref={profileRef}>
