@@ -510,6 +510,130 @@ async function updateSetting(req, res) {
   }
 }
 
+// POST /test-recaptcha (requires verified integration-access session)
+async function testRecaptchaCredentials(req, res) {
+  try {
+    const { siteKey, secretKey, responseToken } = req.body || {};
+
+    // Layer 1 — Input validation
+    if (!siteKey || typeof siteKey !== "string" || !siteKey.trim()) {
+      return res.status(400).json({ error: "Site key is required." });
+    }
+    if (!secretKey || typeof secretKey !== "string" || !secretKey.trim()) {
+      return res.status(400).json({ error: "Secret key is required." });
+    }
+    if (!responseToken || typeof responseToken !== "string" || !responseToken.trim()) {
+      return res.status(400).json({
+        error: "reCAPTCHA response token is required. Complete the test challenge in the browser.",
+      });
+    }
+
+    const trimmedSiteKey = siteKey.trim().replace(/^["']|["']$/g, "");
+    const trimmedSecretKey = secretKey.trim().replace(/^["']|["']$/g, "");
+    const trimmedToken = responseToken.trim();
+
+    const KEY_FORMAT_REGEX = /^[A-Za-z0-9_-]{25,100}$/;
+    if (!KEY_FORMAT_REGEX.test(trimmedSiteKey)) {
+      return res.status(400).json({
+        error: "Invalid site key format. Expected 30–60 letters, numbers, hyphens, or underscores.",
+      });
+    }
+    if (!KEY_FORMAT_REGEX.test(trimmedSecretKey)) {
+      return res.status(400).json({
+        error: "Invalid secret key format. Expected 30–60 letters, numbers, hyphens, or underscores.",
+      });
+    }
+    if (trimmedToken.length < 20) {
+      return res.status(400).json({
+        error: "Invalid response token format.",
+      });
+    }
+
+    // Layer 2 & 3 — Provider verification with Google siteverify
+    const remoteIp = req.ip || req.socket?.remoteAddress;
+    const params = new URLSearchParams({
+      secret: trimmedSecretKey,
+      response: trimmedToken,
+    });
+    if (
+      remoteIp &&
+      remoteIp !== "127.0.0.1" &&
+      remoteIp !== "::1" &&
+      !remoteIp.startsWith("::ffff:127.")
+    ) {
+      params.set("remoteip", remoteIp);
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+    const googleRes = await fetch("https://www.google.com/recaptcha/api/siteverify", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!googleRes.ok) {
+      return res.status(502).json({
+        error: "Google reCAPTCHA verification service is currently unreachable. Please check your network and try again.",
+      });
+    }
+
+    const result = await googleRes.json();
+
+    if (result.success !== true) {
+      const errorCodes = result["error-codes"] || [];
+      let friendlyMessage = "reCAPTCHA verification failed.";
+      if (errorCodes.includes("invalid-input-secret")) {
+        friendlyMessage = "Google rejected the secret key (invalid-input-secret). Verify your private secret key in the Google reCAPTCHA admin console.";
+      } else if (errorCodes.includes("invalid-input-response")) {
+        friendlyMessage = "Google rejected the response token (invalid-input-response). The site key and secret key may not belong to the same reCAPTCHA project or key pair.";
+      } else if (errorCodes.includes("bad-request")) {
+        friendlyMessage = "Google rejected the verification request (bad-request). Verify key configuration.";
+      } else if (errorCodes.includes("timeout-or-duplicate")) {
+        friendlyMessage = "The response token has expired or was already used. Please click Test Credentials again.";
+      }
+      return res.status(400).json({
+        success: false,
+        verified: false,
+        error: friendlyMessage,
+        errorCodes,
+      });
+    }
+
+    await logAudit({
+      req,
+      action: "RECAPTCHA_CREDENTIALS_TESTED",
+      category: "system",
+      target: { entityType: "IntegrationConfig", name: "reCAPTCHA v3 verification" },
+      description: "Tested and verified reCAPTCHA credentials with Google.",
+      details: {
+        score: result.score,
+        action: result.action,
+        hostname: result.hostname,
+        siteKeyPreview: `${trimmedSiteKey.slice(0, 8)}...${trimmedSiteKey.slice(-4)}`,
+      },
+    });
+
+    return res.json({
+      success: true,
+      verified: true,
+      score: result.score,
+      action: result.action,
+      hostname: result.hostname,
+      message: "reCAPTCHA credentials verified successfully with Google.",
+    });
+  } catch (error) {
+    console.error("Test reCAPTCHA credentials error:", error);
+    if (error.name === "AbortError") {
+      return res.status(504).json({ error: "Google verification request timed out. Please try again." });
+    }
+    return res.status(500).json({ error: "Unable to verify credentials with Google." });
+  }
+}
+
 module.exports = {
   getPublicSettings,
   requestAccess,
@@ -520,4 +644,5 @@ module.exports = {
   getSettings,
   updateCustomConfig,
   updateSetting,
+  testRecaptchaCredentials,
 };

@@ -466,6 +466,13 @@ export function updateCustomIntegrationConfig(customConfig, auth = {}) {
   });
 }
 
+export function testRecaptchaCredentials({ siteKey, secretKey, responseToken }) {
+  return request("/integrations/test-recaptcha", {
+    method: "POST",
+    body: JSON.stringify({ siteKey, secretKey, responseToken }),
+  });
+}
+
 // -----------------------------
 // Grades
 // -----------------------------

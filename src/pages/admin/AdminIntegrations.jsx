@@ -35,6 +35,7 @@ import {
   getGoogleConnectUrl,
   getGoogleIntegrationStatus,
   disconnectGoogle,
+  testRecaptchaCredentials,
 } from "../../services/schoolDataService";
 import { downloadAdminAuditPdf, downloadAdminAuditXlsx } from "../../utils/adminAuditExports";
 
@@ -139,6 +140,13 @@ function AdminIntegrations() {
   });
   const [expandedConfig, setExpandedConfig] = useState({});
   const [unlockedConfigs, setUnlockedConfigs] = useState({});
+  const [recaptchaTesting, setRecaptchaTesting] = useState(false);
+  const [recaptchaVerified, setRecaptchaVerified] = useState(false);
+  const [verifiedPair, setVerifiedPair] = useState({ siteKey: "", secretKey: "" });
+  const [recaptchaTestState, setRecaptchaTestState] = useState({
+    status: "untested",
+    message: "Credentials have not yet been tested.",
+  });
 
   useEffect(() => {
     if (!accessToken || !sessionExpiresAt) {
@@ -398,6 +406,14 @@ function AdminIntegrations() {
         setCustomWarning("");
         showToast(result.message || "Custom settings verified and saved.", "success", 6500);
         setDraft((current) => ({ ...current, ...Object.fromEntries(Object.keys(values).map((key) => [draftFieldByEnvKey[key], ""])) }));
+        if (group === "recaptcha") {
+          setRecaptchaVerified(false);
+          setVerifiedPair({ siteKey: "", secretKey: "" });
+          setRecaptchaTestState({
+            status: "untested",
+            message: "Credentials have not yet been tested.",
+          });
+        }
       } catch (err) {
         const msg = err.message || "Unable to save custom settings.";
         setError(msg);
@@ -423,6 +439,14 @@ function AdminIntegrations() {
         setCustomWarning("");
         showToast(result.message || "Custom settings verified and saved.", "success", 6500);
         setDraft((current) => ({ ...current, ...Object.fromEntries(Object.keys(values).map((key) => [draftFieldByEnvKey[key], ""])) }));
+        if (group === "recaptcha") {
+          setRecaptchaVerified(false);
+          setVerifiedPair({ siteKey: "", secretKey: "" });
+          setRecaptchaTestState({
+            status: "untested",
+            message: "Credentials have not yet been tested.",
+          });
+        }
       } catch (err) {
         const msg = err.message || "Unable to save custom settings.";
         setError(msg);
@@ -490,25 +514,315 @@ function AdminIntegrations() {
     );
   }
 
+  async function handleTestRecaptcha() {
+    const siteKey = draft.recaptchaSiteKey.trim().replace(/^["']|["']$/g, "");
+    const secretKey = draft.recaptchaSecretKey.trim().replace(/^["']|["']$/g, "");
+
+    // Layer 1 — Input validation
+    if (!siteKey || !secretKey) {
+      setRecaptchaTestState({
+        status: "failed",
+        message: "Please enter both the Site Key and Secret Key before testing.",
+      });
+      showToast("Both Site Key and Secret Key are required.", "error");
+      return;
+    }
+
+    const keyFormatRegex = /^[A-Za-z0-9_-]{25,100}$/;
+    if (!keyFormatRegex.test(siteKey)) {
+      setRecaptchaTestState({
+        status: "failed",
+        message: "Invalid Site Key format. Expected 30–60 letters, numbers, hyphens, or underscores.",
+      });
+      showToast("Invalid Site Key format.", "error");
+      return;
+    }
+    if (!keyFormatRegex.test(secretKey)) {
+      setRecaptchaTestState({
+        status: "failed",
+        message: "Invalid Secret Key format. Expected 30–60 letters, numbers, hyphens, or underscores.",
+      });
+      showToast("Invalid Secret Key format.", "error");
+      return;
+    }
+
+    setRecaptchaTesting(true);
+    setRecaptchaTestState({
+      status: "testing",
+      message: "Rendering reCAPTCHA challenge and generating token...",
+    });
+
+    try {
+      // Layer 2 & 3 — Load candidate site key into DOM and execute challenge
+      const existingScripts = document.querySelectorAll('script[src*="recaptcha"]');
+      existingScripts.forEach((s) => s.remove());
+      const existingBadges = document.querySelectorAll(".grecaptcha-badge");
+      existingBadges.forEach((b) => b.remove());
+      delete window.grecaptcha;
+
+      await new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = `https://www.google.com/recaptcha/api.js?render=${encodeURIComponent(siteKey)}`;
+        script.async = true;
+        script.defer = true;
+        script.onload = () => resolve();
+        script.onerror = () =>
+          reject(new Error("Unable to load Google reCAPTCHA. Check your network or site key."));
+        document.head.appendChild(script);
+      });
+
+      if (!window.grecaptcha?.ready) {
+        throw new Error("Google reCAPTCHA failed to initialize in the browser.");
+      }
+
+      await new Promise((resolve) => window.grecaptcha.ready(resolve));
+
+      setRecaptchaTestState({
+        status: "testing",
+        message: "Completing provider challenge with candidate site key...",
+      });
+
+      const responseToken = await window.grecaptcha.execute(siteKey, {
+        action: "test_credentials",
+      });
+
+      if (!responseToken || typeof responseToken !== "string") {
+        throw new Error(
+          "reCAPTCHA did not return a valid challenge token. Verify that this Site Key is active and allows this domain in Google Cloud Console."
+        );
+      }
+
+      setRecaptchaTestState({
+        status: "testing",
+        message: "Submitting response token and secret key to backend for paired verification...",
+      });
+
+      // Layer 3 & 4 — Submit to backend validation endpoint
+      const result = await testRecaptchaCredentials({
+        siteKey,
+        secretKey,
+        responseToken,
+      });
+
+      if (result.success && result.verified) {
+        setRecaptchaVerified(true);
+        setVerifiedPair({ siteKey, secretKey });
+        setRecaptchaTestState({
+          status: "verified",
+          message: `Credentials successfully verified with Google${typeof result.score === "number" ? ` (Score: ${result.score})` : ""}. You can now save.`,
+        });
+        showToast("reCAPTCHA credentials verified successfully!", "success");
+      } else {
+        setRecaptchaVerified(false);
+        setRecaptchaTestState({
+          status: "failed",
+          message:
+            result.error ||
+            "Verification failed. The site key and secret key may not be a valid pair.",
+        });
+        showToast(result.error || "reCAPTCHA verification failed.", "error");
+      }
+    } catch (err) {
+      setRecaptchaVerified(false);
+      setRecaptchaTestState({
+        status: "failed",
+        message: err.message || "reCAPTCHA verification failed.",
+      });
+      showToast(err.message || "reCAPTCHA verification failed.", "error");
+    } finally {
+      setRecaptchaTesting(false);
+      // Clean up test badge so it does not permanently hover over the page
+      const badges = document.querySelectorAll(".grecaptcha-badge");
+      badges.forEach((b) => b.remove());
+    }
+  }
+
   function renderRecaptchaConfig() {
+    const hasKeysEntered = Boolean(draft.recaptchaSiteKey.trim() && draft.recaptchaSecretKey.trim());
+    const isPairVerified =
+      recaptchaVerified &&
+      verifiedPair.siteKey === draft.recaptchaSiteKey.trim().replace(/^["']|["']$/g, "") &&
+      verifiedPair.secretKey === draft.recaptchaSecretKey.trim().replace(/^["']|["']$/g, "");
+
     return (
-      <div className="space-y-3">
+      <div className="space-y-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-50 text-amber-700"><ShieldCheck size={20} /></span>
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-50 text-amber-700">
+              <ShieldCheck size={20} />
+            </span>
             <div>
-              <h4 className="font-semibold text-slate-900">reCAPTCHA v3 keys</h4>
-              <p className="mt-1 text-sm text-slate-600">Set the public v3 site key and its private server secret.</p>
+              <h4 className="font-semibold text-slate-900">reCAPTCHA Configuration</h4>
+              <p className="mt-1 text-sm text-slate-600">
+                Set and verify the public v3 site key and its private server secret.
+              </p>
             </div>
           </div>
-          <ConfigBadge active={Boolean(customConfig.CUSTOM_RECAPTCHA_SECRET_KEY?.configured || customConfig.CUSTOM_VITE_RECAPTCHA_SITE_KEY?.configured)} />
+          <div className="flex flex-col items-end gap-1">
+            <span className="text-xs font-medium text-slate-500">Integration status</span>
+            {isPairVerified ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
+                Verified
+              </span>
+            ) : hasKeysEntered ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-600" />
+                Not verified
+              </span>
+            ) : customConfig.CUSTOM_RECAPTCHA_SECRET_KEY?.configured ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-800">
+                <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />
+                Active configuration
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                Not configured
+              </span>
+            )}
+          </div>
         </div>
+
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className="block text-sm font-medium text-slate-700">Site key<input type="text" autoComplete="off" minLength={10} maxLength={255} value={draft.recaptchaSiteKey} onChange={(e) => setDraft({ ...draft, recaptchaSiteKey: e.target.value })} placeholder={customConfig.CUSTOM_VITE_RECAPTCHA_SITE_KEY?.configured ? "Saved · enter a replacement" : "Public site key"} className={inputClass} /></label>
-          <label className="block text-sm font-medium text-slate-700">Secret key<input type="password" autoComplete="new-password" minLength={10} maxLength={255} value={draft.recaptchaSecretKey} onChange={(e) => setDraft({ ...draft, recaptchaSecretKey: e.target.value })} placeholder={customConfig.CUSTOM_RECAPTCHA_SECRET_KEY?.configured ? "Saved securely · enter a replacement" : "Private server key"} className={inputClass} /></label>
+          <label className="block text-sm font-medium text-slate-700">
+            Site Key
+            <input
+              type="text"
+              autoComplete="off"
+              minLength={10}
+              maxLength={255}
+              value={draft.recaptchaSiteKey}
+              onChange={(e) => {
+                const val = e.target.value;
+                setDraft({ ...draft, recaptchaSiteKey: val });
+                if (recaptchaVerified) setRecaptchaVerified(false);
+                if (recaptchaTestState.status !== "untested") {
+                  setRecaptchaTestState({
+                    status: "untested",
+                    message: "Credentials have not yet been tested.",
+                  });
+                }
+              }}
+              placeholder={
+                customConfig.CUSTOM_VITE_RECAPTCHA_SITE_KEY?.configured
+                  ? "Saved · enter a replacement"
+                  : "Enter reCAPTCHA site key"
+              }
+              className={inputClass}
+            />
+          </label>
+          <label className="block text-sm font-medium text-slate-700">
+            Secret Key
+            <input
+              type="password"
+              autoComplete="new-password"
+              minLength={10}
+              maxLength={255}
+              value={draft.recaptchaSecretKey}
+              onChange={(e) => {
+                const val = e.target.value;
+                setDraft({ ...draft, recaptchaSecretKey: val });
+                if (recaptchaVerified) setRecaptchaVerified(false);
+                if (recaptchaTestState.status !== "untested") {
+                  setRecaptchaTestState({
+                    status: "untested",
+                    message: "Credentials have not yet been tested.",
+                  });
+                }
+              }}
+              placeholder={
+                customConfig.CUSTOM_RECAPTCHA_SECRET_KEY?.configured
+                  ? "Saved securely · enter a replacement"
+                  : "Enter reCAPTCHA secret key"
+              }
+              className={inputClass}
+            />
+          </label>
         </div>
-        <p className="text-xs leading-5 text-slate-500">Keys are checked for format; Google verifies the key pair when a user completes the login challenge.</p>
-        <ConfigActions busy={savingKey === "recaptcha"} locked={actionLocked} configured={Boolean(customConfig.CUSTOM_RECAPTCHA_SECRET_KEY?.configured || customConfig.CUSTOM_VITE_RECAPTCHA_SITE_KEY?.configured)} onSave={() => saveCustom("recaptcha", { CUSTOM_RECAPTCHA_SECRET_KEY: draft.recaptchaSecretKey, CUSTOM_VITE_RECAPTCHA_SITE_KEY: draft.recaptchaSiteKey })} onReset={() => saveCustom("recaptcha", { CUSTOM_RECAPTCHA_SECRET_KEY: "", CUSTOM_VITE_RECAPTCHA_SITE_KEY: "" })} disabled={!draft.recaptchaSiteKey.trim() || !draft.recaptchaSecretKey.trim()} />
+
+        {/* Credential verification */}
+        <div className="rounded-lg border border-slate-200 bg-slate-50/75 p-3.5 space-y-2.5">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-600">
+              Credential verification
+            </span>
+            {isPairVerified && (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700">
+                <ShieldCheck size={14} /> Provider verified
+              </span>
+            )}
+          </div>
+
+          <p
+            className={`text-xs ${
+              isPairVerified
+                ? "font-medium text-emerald-700"
+                : recaptchaTestState.status === "failed"
+                  ? "font-medium text-red-600"
+                  : recaptchaTestState.status === "testing"
+                    ? "font-medium text-blue-700"
+                    : "text-slate-500"
+            }`}
+          >
+            {isPairVerified
+              ? recaptchaTestState.message || "Credentials successfully verified with Google."
+              : hasKeysEntered && recaptchaTestState.status === "untested"
+                ? "Credentials have not yet been tested."
+                : recaptchaTestState.message || "Credentials have not yet been tested."}
+          </p>
+
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <button
+              type="button"
+              disabled={!hasKeysEntered || recaptchaTesting || actionLocked}
+              onClick={handleTestRecaptcha}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {recaptchaTesting && <RefreshCw size={13} className="animate-spin text-blue-600" />}
+              {recaptchaTesting ? "Testing Credentials…" : "Test Credentials"}
+            </button>
+            <span className="text-[11px] text-slate-500">
+              Renders and verifies the candidate key pair with Google reCAPTCHA.
+            </span>
+          </div>
+        </div>
+
+        <p className="text-xs leading-5 text-slate-500">
+          The secret key must remain on the backend. It is never returned in API responses, logs, or stored in frontend state beyond testing. Only tested and verified configurations can be saved.
+        </p>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={actionLocked || !isPairVerified || savingKey === "recaptcha"}
+            onClick={() =>
+              saveCustom("recaptcha", {
+                CUSTOM_RECAPTCHA_SECRET_KEY: draft.recaptchaSecretKey,
+                CUSTOM_VITE_RECAPTCHA_SITE_KEY: draft.recaptchaSiteKey,
+              })
+            }
+            className="rounded-lg bg-blue-700 px-3.5 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {savingKey === "recaptcha" ? "Saving…" : "Save Configuration"}
+          </button>
+          <button
+            type="button"
+            disabled={
+              actionLocked ||
+              (!customConfig.CUSTOM_RECAPTCHA_SECRET_KEY?.configured &&
+                !customConfig.CUSTOM_VITE_RECAPTCHA_SITE_KEY?.configured)
+            }
+            onClick={() =>
+              saveCustom("recaptcha", {
+                CUSTOM_RECAPTCHA_SECRET_KEY: "",
+                CUSTOM_VITE_RECAPTCHA_SITE_KEY: "",
+              })
+            }
+            className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Use existing default
+          </button>
+        </div>
       </div>
     );
   }

@@ -116,48 +116,71 @@ async function validateCustomValues(updates) {
     throw validationError("The Google token encryption key must be at least 32 bytes long.");
   }
 
-  if (updates.CUSTOM_RECAPTCHA_SECRET_KEY) {
-    const recaptchaSecret = updates.CUSTOM_RECAPTCHA_SECRET_KEY.trim();
-    if (recaptchaSecret.length < 20) {
-      throw validationError(
-        "The reCAPTCHA secret key looks too short. Check the key and try again."
-      );
-    }
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
-      const params = new URLSearchParams({
-        secret: recaptchaSecret,
-        response: "dnhs_probe_token",
-      });
-      const googleRes = await fetch("https://www.google.com/recaptcha/api/siteverify", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: params,
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-      if (googleRes.ok) {
-        const result = await googleRes.json();
-        const errorCodes = result["error-codes"] || [];
-        if (errorCodes.includes("invalid-input-secret")) {
-          throw validationError(
-            "Google reCAPTCHA rejected this Secret Key (invalid-input-secret). Verify your private secret key in Google reCAPTCHA admin console."
-          );
-        }
-      }
-    } catch (recaptchaError) {
-      if (recaptchaError.statusCode === 400) throw recaptchaError;
-      console.warn("reCAPTCHA verification network probe note:", recaptchaError.message);
-    }
-  }
+  if (
+    Object.hasOwn(updates, "CUSTOM_RECAPTCHA_SECRET_KEY") ||
+    Object.hasOwn(updates, "CUSTOM_VITE_RECAPTCHA_SITE_KEY")
+  ) {
+    const recaptchaSecret = (updates.CUSTOM_RECAPTCHA_SECRET_KEY || "")
+      .trim()
+      .replace(/^["']|["']$/g, "");
+    const recaptchaSiteKey = (updates.CUSTOM_VITE_RECAPTCHA_SITE_KEY || "")
+      .trim()
+      .replace(/^["']|["']$/g, "");
 
-  if (updates.CUSTOM_VITE_RECAPTCHA_SITE_KEY) {
-    const siteKey = updates.CUSTOM_VITE_RECAPTCHA_SITE_KEY.trim();
-    if (siteKey.length < 20) {
-      throw validationError(
-        "The reCAPTCHA site key looks too short. Check the key and try again."
-      );
+    // If both are empty, the admin is resetting/removing custom keys.
+    if (!recaptchaSecret && !recaptchaSiteKey) {
+      // Allowed reset
+    } else {
+      if (!recaptchaSiteKey) {
+        throw validationError(
+          "Both the reCAPTCHA site key and secret key are required to configure reCAPTCHA."
+        );
+      }
+      if (!recaptchaSecret) {
+        throw validationError(
+          "Both the reCAPTCHA site key and secret key are required to configure reCAPTCHA."
+        );
+      }
+
+      const KEY_FORMAT_REGEX = /^[A-Za-z0-9_-]{25,100}$/;
+      if (!KEY_FORMAT_REGEX.test(recaptchaSiteKey)) {
+        throw validationError(
+          "Invalid reCAPTCHA site key format. Expected 30–60 letters, numbers, hyphens, or underscores."
+        );
+      }
+      if (!KEY_FORMAT_REGEX.test(recaptchaSecret)) {
+        throw validationError(
+          "Invalid reCAPTCHA secret key format. Expected 30–60 letters, numbers, hyphens, or underscores."
+        );
+      }
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
+        const params = new URLSearchParams({
+          secret: recaptchaSecret,
+          response: "dnhs_probe_token",
+        });
+        const googleRes = await fetch("https://www.google.com/recaptcha/api/siteverify", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: params,
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        if (googleRes.ok) {
+          const result = await googleRes.json();
+          const errorCodes = result["error-codes"] || [];
+          if (errorCodes.includes("invalid-input-secret")) {
+            throw validationError(
+              "Google reCAPTCHA rejected this Secret Key (invalid-input-secret). Verify your private secret key in Google reCAPTCHA admin console."
+            );
+          }
+        }
+      } catch (recaptchaError) {
+        if (recaptchaError.statusCode === 400) throw recaptchaError;
+        console.warn("reCAPTCHA verification network probe note:", recaptchaError.message);
+      }
     }
   }
 
