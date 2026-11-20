@@ -1,4 +1,4 @@
-import { BrowserRouter, useRoutes } from "react-router-dom";
+import { BrowserRouter, Navigate, useRoutes } from "react-router-dom";
 
 import Layout from "./components/layout/Layout";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
@@ -16,14 +16,20 @@ import Logout from "./pages/auth/Logout";
 
 function AppRoutes() {
   const routes = [
+    // Default root redirect
+    {
+      path: "/",
+      element: <Navigate to="/login" replace />,
+    },
+
     // Public routes
     {
       path: "/login",
       element: <Login />,
     },
     {
-      path:"/logout",
-      element: <Logout />
+      path: "/logout",
+      element: <Logout />,
     },
     {
       path: "/unauthorized",
@@ -42,32 +48,30 @@ function AppRoutes() {
     {
       element: <Layout />,
       children: [
-
         // Student
         {
-          element: (
-            <ProtectedRoute allowedRoles={["student"]} />
-          ),
+          element: <ProtectedRoute allowedRoles={["student"]} />,
           children: studentRoutes,
         },
 
         // Teacher
         {
-          element: (
-            <ProtectedRoute allowedRoles={["teacher"]} />
-          ),
+          element: <ProtectedRoute allowedRoles={["teacher"]} />,
           children: teacherRoutes,
         },
 
         // Administrator
         {
-          element: (
-            <ProtectedRoute allowedRoles={["admin"]} />
-          ),
+          element: <ProtectedRoute allowedRoles={["admin"]} />,
           children: adminRoutes,
         },
-
       ],
+    },
+
+    // Catch-all fallback for unmatched URLs
+    {
+      path: "*",
+      element: <Navigate to="/login" replace />,
     },
   ];
 

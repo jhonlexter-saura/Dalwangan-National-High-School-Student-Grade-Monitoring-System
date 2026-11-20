@@ -3,8 +3,7 @@ const cors = require("cors");
 const dotenv = require("dotenv");
 const dns = require("dns");
 const path = require("path");
-
-const connectDB = require("./config/db");
+const mongoose = require("mongoose");
 
 const classRoutes = require("./routes/classes");
 const studentRoutes = require("./routes/students");
@@ -27,6 +26,46 @@ dns.setServers([
   "1.1.1.1",
 ]);
 
+let usingBackup = false;
+
+const connectDB = async () => {
+  try {
+    const conn = await mongoose.connect(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000,
+    });
+    usingBackup = false;
+    console.log(`✅ Main MongoDB Connected (PRIMARY): ${conn.connection.host}`);
+  } catch (mainError) {
+    console.warn(`⚠️ Main MongoDB failed (${mainError.message}). Switching to Backup...`);
+    try {
+      const backupConn = await mongoose.connect(process.env.BACKUP_MONGODB_URI, {
+        serverSelectionTimeoutMS: 5000,
+      });
+      usingBackup = true;
+      console.log(`✅ Backup MongoDB Connected (PROMOTED TO PRIMARY): ${backupConn.connection.host}`);
+    } catch (backupError) {
+      console.error(`❌ Both Main and Backup MongoDB failed: ${backupError.message}`);
+      process.exit(1);
+    }
+  }
+};
+
+// Automatic live failover if Main disconnects while the server is already running
+mongoose.connection.on("disconnected", async () => {
+  if (!usingBackup) {
+    usingBackup = true;
+    console.warn("⚠️ Main MongoDB disconnected mid-session! Switching to Backup...");
+    try {
+      const backupConn = await mongoose.connect(process.env.BACKUP_MONGODB_URI, {
+        serverSelectionTimeoutMS: 5000,
+      });
+      console.log(`✅ Backup MongoDB Connected (PROMOTED TO PRIMARY): ${backupConn.connection.host}`);
+    } catch (err) {
+      console.error("❌ Failed to switch to Backup MongoDB:", err.message);
+    }
+  }
+});
+
 const app = express();
 
 app.use(cors());
@@ -47,8 +86,16 @@ app.use("/api/users", userRoutes);
 app.use("/api/audit-logs", auditLogRoutes);
 
 app.get("/", (req, res) => {
+  const activeHost = mongoose.connection.host || "Not connected";
+  const isBackupActive = usingBackup || activeHost.includes("tsm7wvj");
+
   res.json({
     message: "DNHS-SGMS API is running",
+    activeDatabase: isBackupActive
+      ? "BACKUP DATABASE (Promoted to Primary)"
+      : "MAIN DATABASE (Primary)",
+    connectedHost: activeHost,
+    status: mongoose.connection.readyState === 1 ? "Online" : "Disconnected",
   });
 });
 

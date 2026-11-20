@@ -1,4 +1,3 @@
-
 import { useEffect, useRef, useState } from "react";
 import { getPublicIntegrationSettings } from "../../services/schoolDataService";
 import { Link, Navigate, useNavigate } from "react-router-dom";
@@ -18,7 +17,8 @@ function Login() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const [captchaSiteKey, setCaptchaSiteKey] = useState(import.meta.env.VITE_RECAPTCHA_SITE_KEY || "");
+  const envSiteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY || "";
+  const [captchaSiteKey, setCaptchaSiteKey] = useState(envSiteKey);
 
   const [integrations, setIntegrations] = useState({
     googleSignIn: true,
@@ -35,7 +35,7 @@ function Login() {
             googleSignIn: result.settings.googleSignIn !== false,
             recaptcha: result.settings.recaptcha !== false,
           });
-          if (result.settings.recaptchaSiteKey) {
+          if (!envSiteKey && result.settings.recaptchaSiteKey) {
             setCaptchaSiteKey(result.settings.recaptchaSiteKey);
           }
         }
@@ -49,7 +49,7 @@ function Login() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [envSiteKey]);
 
   if (user) {
     return <Navigate to={`/${user.role}`} replace />;
@@ -191,27 +191,28 @@ function Login() {
           </div>
 
           {integrations.recaptcha && (
-          <div className="flex justify-center">
-            {captchaSiteKey ? (
-              <ReCAPTCHA
-                ref={captchaRef}
-                sitekey={captchaSiteKey}
-                onChange={setCaptchaToken}
-                onExpired={() => setCaptchaToken(null)}
-                onErrored={() => {
-                  setCaptchaToken(null);
-                  setError(
-                    "reCAPTCHA failed to load. Please refresh and try again."
-                  );
-                }}
-              />
-            ) : (
-              <p className="text-sm text-red-600">
-                reCAPTCHA is not configured.
-              </p>
-            )}
-          </div>
-        )}
+            <div className="flex justify-center">
+              {captchaSiteKey ? (
+                <ReCAPTCHA
+                  key={captchaSiteKey}
+                  ref={captchaRef}
+                  sitekey={captchaSiteKey}
+                  onChange={setCaptchaToken}
+                  onExpired={() => setCaptchaToken(null)}
+                  onErrored={() => {
+                    setCaptchaToken(null);
+                    setError(
+                      "reCAPTCHA failed to load. Please refresh and try again."
+                    );
+                  }}
+                />
+              ) : (
+                <p className="text-sm text-red-600">
+                  reCAPTCHA is not configured.
+                </p>
+              )}
+            </div>
+          )}
 
           <button
             type="submit"
@@ -223,32 +224,32 @@ function Login() {
         </form>
 
         {integrations.googleSignIn && (
-        <>
-          <div className="my-5 flex items-center gap-3">
-            <div className="h-px flex-1 bg-gray-200" />
-            <span className="text-xs text-gray-500">OR</span>
-            <div className="h-px flex-1 bg-gray-200" />
-          </div>
+          <>
+            <div className="my-5 flex items-center gap-3">
+              <div className="h-px flex-1 bg-gray-200" />
+              <span className="text-xs text-gray-500">OR</span>
+              <div className="h-px flex-1 bg-gray-200" />
+            </div>
 
-          <div className="flex justify-center">
-            <GoogleLogin
-              onSuccess={handleGoogleSuccess}
-              onError={() =>
-                setError("Google sign-in was cancelled or failed.")
-              }
-              useOneTap={false}
-              text="signin_with"
-              shape="rectangular"
-              width="320"
-            />
-          </div>
+            <div className="flex justify-center">
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={() =>
+                  setError("Google sign-in was cancelled or failed.")
+                }
+                useOneTap={false}
+                text="signin_with"
+                shape="rectangular"
+                width="320"
+              />
+            </div>
 
-          <p className="mt-4 text-center text-xs text-gray-500">
-            Google sign-in is available only for existing, active
-            DNHS-SGMS accounts.
-          </p>
-        </>
-      )}
+            <p className="mt-4 text-center text-xs text-gray-500">
+              Google sign-in is available only for existing, active
+              DNHS-SGMS accounts.
+            </p>
+          </>
+        )}
       </div>
     </div>
   );

@@ -1,8 +1,20 @@
 {
   "name": "collab-project",
-  "private": true,
   "version": "0.0.0",
+  "private": true,
+  "description": "This web project called Dalwangan National High School Student Grade Monitoring System is the project in compliance in the collaboration of 4 Major Subjects:\r     1. System Integration and Architecture\r     2. Information Assurance and Security\r     3. Advanced Database Systems\r     4. Integrative Programming and Technologies",
+  "homepage": "https://github.com/jhonlexter-saura/Dalwangan-National-High-School-Student-Grade-Monitoring-System#readme",
+  "bugs": {
+    "url": "https://github.com/jhonlexter-saura/Dalwangan-National-High-School-Student-Grade-Monitoring-System/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jhonlexter-saura/Dalwangan-National-High-School-Student-Grade-Monitoring-System.git"
+  },
+  "license": "ISC",
+  "author": "",
   "type": "module",
+  "main": "eslint.config.js",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
