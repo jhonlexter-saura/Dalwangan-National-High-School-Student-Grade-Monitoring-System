@@ -251,15 +251,6 @@ function Header({ onMenuClick }) {
                     Settings
                   </Link>
                 )}
-
-                <Link
-                  to="/"
-                  onClick={closeProfile}
-                  className="flex items-center gap-2.5 px-4 py-2 text-sm text-gray-700 hover:bg-[#000062]/5 hover:text-[#000062]"
-                >
-                  <Globe size={16} />
-                  School Homepage
-                </Link>
               </div>
 
               {/* Logout */}
