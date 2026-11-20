@@ -32,6 +32,7 @@ router.use(requireIntegrationAccess);
 
 router.post("/security/verify-approval", validateVerifyApprovalBody, controller.verifyApproval);
 router.post("/test-recaptcha", authRateLimits.integrationApprovalIp, controller.testRecaptchaCredentials);
+router.post("/test-mailer", authRateLimits.integrationApprovalIp, controller.testMailerCredentials);
 router.get("/", controller.getSettings);
 router.put("/custom-config", validateCustomConfigBody, guardEncryptionKeyChange, validateCustomConfigValues, controller.updateCustomConfig);
 router.patch("/", validateSettingToggle, controller.updateSetting);

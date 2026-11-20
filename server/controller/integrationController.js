@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const nodemailer = require("nodemailer");
 
 const IntegrationSetting = require("../models/IntegrationSetting");
 const IntegrationSecurityGrant = require("../models/IntegrationSecurityGrant");
@@ -634,6 +635,106 @@ async function testRecaptchaCredentials(req, res) {
   }
 }
 
+// POST /test-mailer (requires verified integration-access session)
+async function testMailerCredentials(req, res) {
+  try {
+    const { emailUser, emailPassword } = req.body || {};
+
+    // Layer 1 — Input validation
+    if (!emailUser || typeof emailUser !== "string" || !emailUser.trim()) {
+      return res.status(400).json({ error: "Gmail account email is required." });
+    }
+    if (!emailPassword || typeof emailPassword !== "string" || !emailPassword.trim()) {
+      return res.status(400).json({ error: "Gmail app password is required." });
+    }
+
+    const trimmedUser = emailUser.trim().toLowerCase();
+    const trimmedPass = emailPassword.trim().replace(/\s+/g, "");
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedUser)) {
+      return res.status(400).json({
+        error: "Invalid email address format. Enter a valid email address.",
+      });
+    }
+
+    if (!/^[a-zA-Z0-9]{16}$/.test(trimmedPass)) {
+      return res.status(400).json({
+        error: "Invalid Gmail app password format. Google App Passwords must be 16 characters (letters or numbers).",
+      });
+    }
+
+    // Layer 2 & 3 — Provider verification with Gmail SMTP
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: trimmedUser,
+        pass: trimmedPass,
+      },
+      connectionTimeout: 8000,
+      greetingTimeout: 8000,
+      socketTimeout: 8000,
+    });
+
+    try {
+      await Promise.race([
+        transporter.verify(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Connection to Gmail SMTP timed out.")), 8500)
+        ),
+      ]);
+    } catch (mailError) {
+      let friendlyMessage = `Gmail SMTP verification failed: ${mailError.message || "Authentication failed"}.`;
+      if (
+        mailError.responseCode === 535 ||
+        String(mailError.message).includes("535") ||
+        String(mailError.message).includes("Invalid login")
+      ) {
+        friendlyMessage =
+          "Google rejected the Gmail credentials (535 Invalid login). Please ensure 2-Step Verification is active on your Google account and use a generated 16-character App Password (not your personal password).";
+      } else if (
+        mailError.code === "ETIMEDOUT" ||
+        mailError.code === "ECONNREFUSED" ||
+        mailError.code === "ENOTFOUND" ||
+        mailError.message?.includes("timed out")
+      ) {
+        friendlyMessage =
+          "Unable to connect to Gmail SMTP server (smtp.gmail.com). Please check your server internet connectivity and try again.";
+      }
+      return res.status(400).json({
+        success: false,
+        verified: false,
+        error: friendlyMessage,
+      });
+    }
+
+    // Mask user email for audit log
+    const [userLocal, userDomain] = trimmedUser.split("@");
+    const maskedLocal =
+      userLocal.length <= 2 ? userLocal : `${userLocal.slice(0, 2)}***${userLocal.slice(-1)}`;
+    const maskedEmail = `${maskedLocal}@${userDomain}`;
+
+    await logAudit({
+      req,
+      action: "EMAIL_CREDENTIALS_TESTED",
+      category: "system",
+      target: { entityType: "IntegrationConfig", name: "Gmail SMTP verification" },
+      description: "Tested and verified email mailer credentials with Gmail SMTP.",
+      details: {
+        mailerAccount: maskedEmail,
+      },
+    });
+
+    return res.json({
+      success: true,
+      verified: true,
+      message: "Gmail SMTP authentication successful. Credentials verified with Google.",
+    });
+  } catch (error) {
+    console.error("Test mailer credentials error:", error);
+    return res.status(500).json({ error: "Unable to verify credentials with Gmail." });
+  }
+}
+
 module.exports = {
   getPublicSettings,
   requestAccess,
@@ -645,4 +746,5 @@ module.exports = {
   updateCustomConfig,
   updateSetting,
   testRecaptchaCredentials,
+  testMailerCredentials,
 };

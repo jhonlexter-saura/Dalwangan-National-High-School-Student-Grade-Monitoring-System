@@ -473,6 +473,13 @@ export function testRecaptchaCredentials({ siteKey, secretKey, responseToken }) 
   });
 }
 
+export function testMailerCredentials({ emailUser, emailPassword }) {
+  return request("/integrations/test-mailer", {
+    method: "POST",
+    body: JSON.stringify({ emailUser, emailPassword }),
+  });
+}
+
 // -----------------------------
 // Grades
 // -----------------------------

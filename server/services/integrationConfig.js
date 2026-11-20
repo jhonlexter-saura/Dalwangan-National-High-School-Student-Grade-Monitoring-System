@@ -184,22 +184,62 @@ async function validateCustomValues(updates) {
     }
   }
 
-  if (Object.hasOwn(updates, "CUSTOM_EMAIL_USER") || Object.hasOwn(updates, "CUSTOM_EMAIL_APP_PASSWORD")) {
-    const user = updates.CUSTOM_EMAIL_USER ?? effectiveValue("CUSTOM_EMAIL_USER", "EMAIL_USER");
-    const pass =
-      updates.CUSTOM_EMAIL_APP_PASSWORD ??
-      effectiveValue("CUSTOM_EMAIL_APP_PASSWORD", "EMAIL_APP_PASSWORD");
-    if (user && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user)) {
-      throw validationError("Enter a valid email address for the mailer account.");
-    }
-    if (user && pass) {
-      const transporter = nodemailer.createTransport({ service: "gmail", auth: { user, pass } });
-      try {
-        await transporter.verify();
-      } catch (mailError) {
+  if (
+    Object.hasOwn(updates, "CUSTOM_EMAIL_USER") ||
+    Object.hasOwn(updates, "CUSTOM_EMAIL_APP_PASSWORD")
+  ) {
+    const rawUser = updates.CUSTOM_EMAIL_USER;
+    const rawPass = updates.CUSTOM_EMAIL_APP_PASSWORD;
+
+    const emailUser = typeof rawUser === "string" ? rawUser.trim().toLowerCase() : "";
+    const emailPassword = typeof rawPass === "string" ? rawPass.trim().replace(/\s+/g, "") : "";
+
+    // If both are empty, this is an allowed reset/removal of custom mailer overrides
+    if (!emailUser && !emailPassword) {
+      // Allowed reset
+    } else {
+      if (!emailUser || !emailPassword) {
         throw validationError(
-          `The Gmail mailer could not sign in (${mailError.message || "Authentication failed"}). Check your Gmail address and 16-character App Password.`
+          "Both the Gmail account and Gmail app password are required to configure the mailer."
         );
+      }
+
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailUser)) {
+        throw validationError("Enter a valid email address for the mailer account.");
+      }
+
+      if (!/^[a-zA-Z0-9]{16}$/.test(emailPassword)) {
+        throw validationError(
+          "Invalid Gmail app password format. Expected a 16-character Google App Password."
+        );
+      }
+
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: { user: emailUser, pass: emailPassword },
+        connectionTimeout: 8000,
+        greetingTimeout: 8000,
+        socketTimeout: 8000,
+      });
+
+      try {
+        await Promise.race([
+          transporter.verify(),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Connection to Gmail SMTP timed out.")), 8500)
+          ),
+        ]);
+      } catch (mailError) {
+        let msg = `The Gmail mailer could not sign in (${mailError.message || "Authentication failed"}). Check your Gmail address and 16-character App Password.`;
+        if (
+          mailError.responseCode === 535 ||
+          String(mailError.message).includes("535") ||
+          String(mailError.message).includes("Invalid login")
+        ) {
+          msg =
+            "Google rejected the Gmail credentials (535 Invalid login). Please ensure 2-Step Verification is active on your Google account and use a generated 16-character App Password.";
+        }
+        throw validationError(msg);
       }
     }
   }

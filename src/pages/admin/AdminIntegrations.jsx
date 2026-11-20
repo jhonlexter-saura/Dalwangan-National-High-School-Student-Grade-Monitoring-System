@@ -36,6 +36,7 @@ import {
   getGoogleIntegrationStatus,
   disconnectGoogle,
   testRecaptchaCredentials,
+  testMailerCredentials,
 } from "../../services/schoolDataService";
 import { downloadAdminAuditPdf, downloadAdminAuditXlsx } from "../../utils/adminAuditExports";
 
@@ -144,6 +145,13 @@ function AdminIntegrations() {
   const [recaptchaVerified, setRecaptchaVerified] = useState(false);
   const [verifiedPair, setVerifiedPair] = useState({ siteKey: "", secretKey: "" });
   const [recaptchaTestState, setRecaptchaTestState] = useState({
+    status: "untested",
+    message: "Credentials have not yet been tested.",
+  });
+  const [emailTesting, setEmailTesting] = useState(false);
+  const [emailVerified, setEmailVerified] = useState(false);
+  const [verifiedEmailPair, setVerifiedEmailPair] = useState({ emailUser: "", emailPassword: "" });
+  const [emailTestState, setEmailTestState] = useState({
     status: "untested",
     message: "Credentials have not yet been tested.",
   });
@@ -414,6 +422,14 @@ function AdminIntegrations() {
             message: "Credentials have not yet been tested.",
           });
         }
+        if (group === "email") {
+          setEmailVerified(false);
+          setVerifiedEmailPair({ emailUser: "", emailPassword: "" });
+          setEmailTestState({
+            status: "untested",
+            message: "Credentials have not yet been tested.",
+          });
+        }
       } catch (err) {
         const msg = err.message || "Unable to save custom settings.";
         setError(msg);
@@ -443,6 +459,14 @@ function AdminIntegrations() {
           setRecaptchaVerified(false);
           setVerifiedPair({ siteKey: "", secretKey: "" });
           setRecaptchaTestState({
+            status: "untested",
+            message: "Credentials have not yet been tested.",
+          });
+        }
+        if (group === "email") {
+          setEmailVerified(false);
+          setVerifiedEmailPair({ emailUser: "", emailPassword: "" });
+          setEmailTestState({
             status: "untested",
             message: "Credentials have not yet been tested.",
           });
@@ -827,25 +851,270 @@ function AdminIntegrations() {
     );
   }
 
+  async function handleTestEmail() {
+    const emailUser = draft.emailUser.trim().toLowerCase();
+    const emailPassword = draft.emailPassword.trim().replace(/\s+/g, "");
+
+    // Layer 1 — Input validation
+    if (!emailUser || !emailPassword) {
+      setEmailTestState({
+        status: "failed",
+        message: "Please enter both the Gmail account and Gmail App Password before testing.",
+      });
+      showToast("Both Gmail account and App Password are required.", "error");
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(emailUser)) {
+      setEmailTestState({
+        status: "failed",
+        message: "Invalid email address format.",
+      });
+      showToast("Enter a valid email address.", "error");
+      return;
+    }
+
+    if (!/^[a-zA-Z0-9]{16}$/.test(emailPassword)) {
+      setEmailTestState({
+        status: "failed",
+        message: "Invalid Gmail app password format. Expected a 16-character Google App Password.",
+      });
+      showToast("Google App Passwords must be 16 characters (letters or numbers).", "error");
+      return;
+    }
+
+    setEmailTesting(true);
+    setEmailTestState({
+      status: "testing",
+      message: "Verifying SMTP credentials with Gmail (smtp.gmail.com)...",
+    });
+
+    try {
+      // Layer 2 & 3 — Backend provider verification via nodemailer verify()
+      const res = await testMailerCredentials({
+        emailUser,
+        emailPassword,
+      });
+
+      if (res && res.verified) {
+        setEmailVerified(true);
+        setVerifiedEmailPair({ emailUser, emailPassword });
+        setEmailTestState({
+          status: "verified",
+          message: res.message || "Credentials successfully verified with Gmail. You can now save.",
+        });
+        showToast("Gmail mailer credentials verified successfully!", "success");
+      } else {
+        setEmailVerified(false);
+        setEmailTestState({
+          status: "failed",
+          message:
+            res?.error ||
+            "SMTP verification failed. Verify your email and 16-character App Password.",
+        });
+        showToast(res?.error || "SMTP verification failed.", "error");
+      }
+    } catch (err) {
+      setEmailVerified(false);
+      const msg = err.message || "Unable to verify Gmail credentials.";
+      setEmailTestState({
+        status: "failed",
+        message: msg,
+      });
+      showToast(msg, "error");
+    } finally {
+      setEmailTesting(false);
+    }
+  }
+
   function renderEmailConfig() {
+    const hasKeysEntered = Boolean(draft.emailUser.trim() && draft.emailPassword.trim());
+    const isPairVerified =
+      emailVerified &&
+      hasKeysEntered &&
+      verifiedEmailPair.emailUser === draft.emailUser.trim().toLowerCase() &&
+      verifiedEmailPair.emailPassword === draft.emailPassword.trim().replace(/\s+/g, "");
+
     return (
-      <div className="space-y-3">
+      <div className="space-y-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-rose-50 text-rose-700"><Mail size={20} /></span>
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-rose-50 text-rose-700">
+              <Mail size={20} />
+            </span>
             <div>
-              <h4 className="font-semibold text-slate-900">Email mailer credentials</h4>
-              <p className="mt-1 text-sm text-slate-600">Use a custom Gmail account to send password reset links.</p>
+              <h4 className="font-semibold text-slate-900">Mailer Configuration</h4>
+              <p className="mt-1 text-sm text-slate-600">
+                Use a custom Gmail account to send password reset links and security notifications.
+              </p>
             </div>
           </div>
-          <ConfigBadge active={Boolean(customConfig.CUSTOM_EMAIL_USER?.configured || customConfig.CUSTOM_EMAIL_APP_PASSWORD?.configured)} />
+          <div className="flex flex-col items-end gap-1">
+            <span className="text-xs font-medium text-slate-500">Integration status</span>
+            {isPairVerified ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
+                Verified
+              </span>
+            ) : hasKeysEntered ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-600" />
+                Not verified
+              </span>
+            ) : customConfig.CUSTOM_EMAIL_USER?.configured || customConfig.CUSTOM_EMAIL_APP_PASSWORD?.configured ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-800">
+                <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />
+                Active configuration
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                Not configured
+              </span>
+            )}
+          </div>
         </div>
+
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className="block text-sm font-medium text-slate-700">Gmail account<input type="email" autoComplete="off" minLength={5} maxLength={100} value={draft.emailUser} onChange={(e) => setDraft({ ...draft, emailUser: e.target.value })} placeholder={customConfig.CUSTOM_EMAIL_USER?.configured ? "Saved · enter a replacement" : "name@gmail.com"} className={inputClass} /></label>
-          <label className="block text-sm font-medium text-slate-700">Gmail app password<input type="password" autoComplete="new-password" minLength={8} maxLength={100} value={draft.emailPassword} onChange={(e) => setDraft({ ...draft, emailPassword: e.target.value })} placeholder={customConfig.CUSTOM_EMAIL_APP_PASSWORD?.configured ? "Saved securely · enter a replacement" : "16-character app password"} className={inputClass} /></label>
+          <label className="block text-sm font-medium text-slate-700">
+            Gmail account
+            <input
+              type="email"
+              autoComplete="off"
+              minLength={5}
+              maxLength={100}
+              value={draft.emailUser}
+              onChange={(e) => {
+                const val = e.target.value;
+                setDraft({ ...draft, emailUser: val });
+                if (emailVerified) setEmailVerified(false);
+                if (emailTestState.status !== "untested") {
+                  setEmailTestState({
+                    status: "untested",
+                    message: "Credentials have not yet been tested.",
+                  });
+                }
+              }}
+              placeholder={
+                customConfig.CUSTOM_EMAIL_USER?.configured
+                  ? "Saved · enter a replacement"
+                  : "name@gmail.com"
+              }
+              className={inputClass}
+            />
+          </label>
+          <label className="block text-sm font-medium text-slate-700">
+            Gmail app password
+            <input
+              type="password"
+              autoComplete="new-password"
+              minLength={16}
+              maxLength={100}
+              value={draft.emailPassword}
+              onChange={(e) => {
+                const val = e.target.value;
+                setDraft({ ...draft, emailPassword: val });
+                if (emailVerified) setEmailVerified(false);
+                if (emailTestState.status !== "untested") {
+                  setEmailTestState({
+                    status: "untested",
+                    message: "Credentials have not yet been tested.",
+                  });
+                }
+              }}
+              placeholder={
+                customConfig.CUSTOM_EMAIL_APP_PASSWORD?.configured
+                  ? "Saved securely · enter a replacement"
+                  : "16-character app password"
+              }
+              className={inputClass}
+            />
+          </label>
         </div>
-        <p className="text-xs leading-5 text-slate-500">Credentials are checked with Gmail before saving. Blank fields keep the existing value; use the reset button to remove both custom overrides.</p>
-        <ConfigActions busy={savingKey === "email"} locked={actionLocked} configured={Boolean(customConfig.CUSTOM_EMAIL_USER?.configured || customConfig.CUSTOM_EMAIL_APP_PASSWORD?.configured)} onSave={() => saveCustom("email", { CUSTOM_EMAIL_USER: draft.emailUser, CUSTOM_EMAIL_APP_PASSWORD: draft.emailPassword })} onReset={() => saveCustom("email", { CUSTOM_EMAIL_USER: "", CUSTOM_EMAIL_APP_PASSWORD: "" })} disabled={!draft.emailUser.trim() || !draft.emailPassword.trim()} />
+
+        {/* Credential verification */}
+        <div className="rounded-lg border border-slate-200 bg-slate-50/75 p-3.5 space-y-2.5">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-600">
+              Credential verification
+            </span>
+            {isPairVerified && (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700">
+                <ShieldCheck size={14} /> Provider verified
+              </span>
+            )}
+          </div>
+
+          <p
+            className={`text-xs ${
+              isPairVerified
+                ? "font-medium text-emerald-700"
+                : emailTestState.status === "failed"
+                  ? "font-medium text-red-600"
+                  : emailTestState.status === "testing"
+                    ? "font-medium text-blue-700"
+                    : "text-slate-500"
+            }`}
+          >
+            {isPairVerified
+              ? emailTestState.message || "Credentials successfully verified with Gmail."
+              : hasKeysEntered && emailTestState.status === "untested"
+                ? "Credentials have not yet been tested."
+                : emailTestState.message || "Credentials have not yet been tested."}
+          </p>
+
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <button
+              type="button"
+              disabled={!hasKeysEntered || emailTesting || actionLocked}
+              onClick={handleTestEmail}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {emailTesting && <RefreshCw size={13} className="animate-spin text-blue-600" />}
+              {emailTesting ? "Testing Credentials…" : "Test Credentials"}
+            </button>
+            <span className="text-[11px] text-slate-500">
+              Performs an authenticated SMTP handshake with Google's mail server.
+            </span>
+          </div>
+        </div>
+
+        <p className="text-xs leading-5 text-slate-500">
+          The app password must remain on the backend. It is never returned in API responses, logs, or stored in frontend state beyond testing. Only tested and verified configurations can be saved.
+        </p>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={actionLocked || !isPairVerified || savingKey === "email"}
+            onClick={() =>
+              saveCustom("email", {
+                CUSTOM_EMAIL_USER: draft.emailUser,
+                CUSTOM_EMAIL_APP_PASSWORD: draft.emailPassword,
+              })
+            }
+            className="rounded-lg bg-blue-700 px-3.5 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {savingKey === "email" ? "Saving…" : "Save Configuration"}
+          </button>
+          <button
+            type="button"
+            disabled={
+              actionLocked ||
+              (!customConfig.CUSTOM_EMAIL_USER?.configured &&
+                !customConfig.CUSTOM_EMAIL_APP_PASSWORD?.configured)
+            }
+            onClick={() =>
+              saveCustom("email", {
+                CUSTOM_EMAIL_USER: "",
+                CUSTOM_EMAIL_APP_PASSWORD: "",
+              })
+            }
+            className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Use existing default
+          </button>
+        </div>
       </div>
     );
   }
