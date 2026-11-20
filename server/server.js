@@ -21,6 +21,7 @@ const auditLogRoutes = require("./routes/auditLogs");
 const passkeyRoutes = require("./routes/passkeys");
 const googleIntegrationRoutes = require("./routes/googleIntegration");
 const googleExportRoutes = require("./routes/googleExports");
+const { publicEndpointLimiter } = require("./middleware/rateLimits");
 
 dotenv.config({ path: path.resolve(__dirname, ".env") });
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
@@ -37,7 +38,7 @@ app.use(express.json({ limit: "12mb" }));
 
 const apiV1 = express.Router();
 
-apiV1.get("/data", (req, res) => {
+apiV1.get("/data", publicEndpointLimiter, (req, res) => {
   res.json({
     version: "v1",
     status: "active",
@@ -84,7 +85,7 @@ app.use("/api/v1", apiV1);
 // Backwards compatibility alias for existing consumers
 app.use("/api", apiV1);
 
-app.get("/", (req, res) => {
+app.get("/", publicEndpointLimiter, (req, res) => {
   res.json({
     message: "DNHS-SGMS API is running",
   });

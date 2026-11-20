@@ -3,6 +3,7 @@ const express = require("express");
 const { requireAdmin } = require("../middleware/authorization");
 const { requireIntegrationAccess } = require("../middleware/integrationSecurity");
 const { limits: authRateLimits } = require("../middleware/authRateLimit");
+const { publicEndpointLimiter } = require("../middleware/rateLimits");
 const {
   validateVerifyAccessBody,
   validateApprovalRequest,
@@ -17,7 +18,7 @@ const controller = require("../controller/integrationController");
 const router = express.Router();
 
 // Public: exposes integration status only, never secret keys.
-router.get("/public", controller.getPublicSettings);
+router.get("/public", publicEndpointLimiter, controller.getPublicSettings);
 
 // Everything below requires an active administrator.
 router.use(requireAdmin);

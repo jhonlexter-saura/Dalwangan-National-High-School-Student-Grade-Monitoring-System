@@ -1,6 +1,10 @@
 const express = require("express");
 
 const {
+  dataModificationLimiter,
+  searchFilterLimiter,
+} = require("../middleware/rateLimits");
+const {
   validateTeacherClassBody,
   validateClassBody,
   validateClassUpdateBody,
@@ -10,14 +14,14 @@ const controller = require("../controller/classController");
 const router = express.Router();
 
 // Reads (specific paths before "/:id")
-router.get("/", controller.getClasses);
-router.get("/teacher/:userId", controller.getTeacherClasses);
-router.get("/:id", controller.getClass);
+router.get("/", searchFilterLimiter, controller.getClasses);
+router.get("/teacher/:userId", searchFilterLimiter, controller.getTeacherClasses);
+router.get("/:id", searchFilterLimiter, controller.getClass);
 
 // Writes
-router.post("/teacher/:userId", validateTeacherClassBody, controller.createTeacherClass);
-router.post("/", validateClassBody, controller.createClass);
-router.put("/:id", validateClassUpdateBody, controller.updateClass);
-router.delete("/:id", controller.deleteClass);
+router.post("/teacher/:userId", dataModificationLimiter, validateTeacherClassBody, controller.createTeacherClass);
+router.post("/", dataModificationLimiter, validateClassBody, controller.createClass);
+router.put("/:id", dataModificationLimiter, validateClassUpdateBody, controller.updateClass);
+router.delete("/:id", dataModificationLimiter, controller.deleteClass);
 
 module.exports = router;

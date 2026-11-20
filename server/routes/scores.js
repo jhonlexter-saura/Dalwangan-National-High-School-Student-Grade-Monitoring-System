@@ -9,13 +9,17 @@ const Gradebook = require("../models/Gradebook");
 const Notification = require("../models/Notification");
 const { requireAuthenticatedUser } = require("../middleware/authorization");
 const { lockGradebookForScore } = require("../middleware/gradebookLock");
+const {
+  dataModificationLimiter,
+  searchFilterLimiter,
+} = require("../middleware/rateLimits");
 const { validateScoreInput } = require("../middleware/validation");
 const { logAudit } = require("../services/auditLogger");
 
 const router = express.Router();
 
 // GET all scores
-router.get("/", async (req, res) => {
+router.get("/", searchFilterLimiter, async (req, res) => {
   try {
     const scores = await Score.find()
       .populate("student")
@@ -33,7 +37,7 @@ router.get("/", async (req, res) => {
 });
 
 // GET scores for a class
-router.get("/class/:classId", async (req, res) => {
+router.get("/class/:classId", searchFilterLimiter, async (req, res) => {
   try {
     const scores = await Score.find({
       class: req.params.classId,
@@ -52,7 +56,7 @@ router.get("/class/:classId", async (req, res) => {
 });
 
 // GET scores for an activity
-router.get("/activity/:activityId", async (req, res) => {
+router.get("/activity/:activityId", searchFilterLimiter, async (req, res) => {
   try {
     const scores = await Score.find({
       activity: req.params.activityId,
@@ -70,7 +74,7 @@ router.get("/activity/:activityId", async (req, res) => {
   }
 });
 
-router.get("/assignment/:assignmentId", async (req, res) => {
+router.get("/assignment/:assignmentId", searchFilterLimiter, async (req, res) => {
   try {
     const scores = await Score.find({ subjectAssignment: req.params.assignmentId })
       .populate("student")
@@ -84,7 +88,7 @@ router.get("/assignment/:assignmentId", async (req, res) => {
 });
 
 // CREATE or update a score
-router.post("/", requireAuthenticatedUser, lockGradebookForScore, validateScoreInput, async (req, res) => {
+router.post("/", requireAuthenticatedUser, dataModificationLimiter, lockGradebookForScore, validateScoreInput, async (req, res) => {
   try {
     const {
       studentId,
