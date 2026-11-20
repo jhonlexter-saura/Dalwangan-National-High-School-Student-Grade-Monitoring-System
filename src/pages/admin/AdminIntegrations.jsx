@@ -37,6 +37,7 @@ import {
   disconnectGoogle,
   testRecaptchaCredentials,
   testMailerCredentials,
+  testGoogleCredentials,
 } from "../../services/schoolDataService";
 import { downloadAdminAuditPdf, downloadAdminAuditXlsx } from "../../utils/adminAuditExports";
 
@@ -152,6 +153,17 @@ function AdminIntegrations() {
   const [emailVerified, setEmailVerified] = useState(false);
   const [verifiedEmailPair, setVerifiedEmailPair] = useState({ emailUser: "", emailPassword: "" });
   const [emailTestState, setEmailTestState] = useState({
+    status: "untested",
+    message: "Credentials have not yet been tested.",
+  });
+  const [googleTesting, setGoogleTesting] = useState(false);
+  const [googleVerified, setGoogleVerified] = useState(false);
+  const [verifiedGooglePair, setVerifiedGooglePair] = useState({
+    googleClientId: "",
+    googleClientSecret: "",
+    googleTokenKey: "",
+  });
+  const [googleTestState, setGoogleTestState] = useState({
     status: "untested",
     message: "Credentials have not yet been tested.",
   });
@@ -430,6 +442,14 @@ function AdminIntegrations() {
             message: "Credentials have not yet been tested.",
           });
         }
+        if (group === "google") {
+          setGoogleVerified(false);
+          setVerifiedGooglePair({ googleClientId: "", googleClientSecret: "", googleTokenKey: "" });
+          setGoogleTestState({
+            status: "untested",
+            message: "Credentials have not yet been tested.",
+          });
+        }
       } catch (err) {
         const msg = err.message || "Unable to save custom settings.";
         setError(msg);
@@ -467,6 +487,14 @@ function AdminIntegrations() {
           setEmailVerified(false);
           setVerifiedEmailPair({ emailUser: "", emailPassword: "" });
           setEmailTestState({
+            status: "untested",
+            message: "Credentials have not yet been tested.",
+          });
+        }
+        if (group === "google") {
+          setGoogleVerified(false);
+          setVerifiedGooglePair({ googleClientId: "", googleClientSecret: "", googleTokenKey: "" });
+          setGoogleTestState({
             status: "untested",
             message: "Credentials have not yet been tested.",
           });
@@ -514,26 +542,321 @@ function AdminIntegrations() {
 
   /* ── Custom config panel renderers, keyed by integration customGroup ── */
 
+  async function handleTestGoogle() {
+    const googleClientId = draft.googleClientId.trim().replace(/^["']|["']$/g, "");
+    const googleClientSecret = draft.googleClientSecret.trim().replace(/^["']|["']$/g, "");
+    const googleTokenKey = draft.googleTokenKey.trim().replace(/^["']|["']$/g, "");
+
+    // Layer 1 — Input validation
+    if (!googleClientId || !googleClientSecret || !googleTokenKey) {
+      setGoogleTestState({
+        status: "failed",
+        message: "Please enter Client ID, Client Secret, and Token Encryption Key before testing.",
+      });
+      showToast("All three Google credentials are required.", "error");
+      return;
+    }
+
+    if (!/^[0-9]+-[a-z0-9_]+\.apps\.googleusercontent\.com$/i.test(googleClientId)) {
+      setGoogleTestState({
+        status: "failed",
+        message: "Invalid Client ID format. Must end in .apps.googleusercontent.com.",
+      });
+      showToast("Invalid Google OAuth Client ID format.", "error");
+      return;
+    }
+
+    if (googleClientSecret.length < 16) {
+      setGoogleTestState({
+        status: "failed",
+        message: "Invalid Client Secret format. Expected at least 16 characters.",
+      });
+      showToast("Google Client Secret must be at least 16 characters.", "error");
+      return;
+    }
+
+    if (googleTokenKey.length < 32) {
+      setGoogleTestState({
+        status: "failed",
+        message: "Google token encryption key must be at least 32 characters long.",
+      });
+      showToast("Token encryption key must be at least 32 characters.", "error");
+      return;
+    }
+
+    setGoogleTesting(true);
+    setGoogleTestState({
+      status: "testing",
+      message: "Verifying OAuth credentials with Google (oauth2.googleapis.com)...",
+    });
+
+    try {
+      // Layer 2 & 3 — Backend provider verification
+      const res = await testGoogleCredentials({
+        googleClientId,
+        googleClientSecret,
+        googleTokenKey,
+      });
+
+      if (res && res.verified) {
+        setGoogleVerified(true);
+        setVerifiedGooglePair({ googleClientId, googleClientSecret, googleTokenKey });
+        setGoogleTestState({
+          status: "verified",
+          message: res.message || "Credentials successfully verified with Google. You can now save.",
+        });
+        showToast("Google OAuth credentials verified successfully!", "success");
+      } else {
+        setGoogleVerified(false);
+        setGoogleTestState({
+          status: "failed",
+          message:
+            res?.error ||
+            "Verification failed. Google rejected the client credentials.",
+        });
+        showToast(res?.error || "Google credentials verification failed.", "error");
+      }
+    } catch (err) {
+      setGoogleVerified(false);
+      const msg = err.message || "Unable to verify Google credentials.";
+      setGoogleTestState({
+        status: "failed",
+        message: msg,
+      });
+      showToast(msg, "error");
+    } finally {
+      setGoogleTesting(false);
+    }
+  }
+
   function renderGoogleConfig() {
+    const hasKeysEntered = Boolean(
+      draft.googleClientId.trim() &&
+      draft.googleClientSecret.trim() &&
+      draft.googleTokenKey.trim()
+    );
+    const isPairVerified =
+      googleVerified &&
+      hasKeysEntered &&
+      verifiedGooglePair.googleClientId === draft.googleClientId.trim().replace(/^["']|["']$/g, "") &&
+      verifiedGooglePair.googleClientSecret === draft.googleClientSecret.trim().replace(/^["']|["']$/g, "") &&
+      verifiedGooglePair.googleTokenKey === draft.googleTokenKey.trim().replace(/^["']|["']$/g, "");
+
     return (
-      <div className="space-y-3">
+      <div className="space-y-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-50 text-green-700"><Globe size={20} /></span>
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-50 text-green-700">
+              <Globe size={20} />
+            </span>
             <div>
-              <h4 className="font-semibold text-slate-900">Google OAuth credentials</h4>
-              <p className="mt-1 text-sm text-slate-600">Set the OAuth client used for sign-in and Drive exports.</p>
+              <h4 className="font-semibold text-slate-900">Google OAuth Configuration</h4>
+              <p className="mt-1 text-sm text-slate-600">
+                Set the OAuth client used for Google Sign-In and Google Drive exports.
+              </p>
             </div>
           </div>
-          <ConfigBadge active={Boolean(customConfig.CUSTOM_GOOGLE_CLIENT_ID?.configured || customConfig.CUSTOM_VITE_GOOGLE_CLIENT_ID?.configured || customConfig.CUSTOM_GOOGLE_CLIENT_SECRET?.configured)} />
+          <div className="flex flex-col items-end gap-1">
+            <span className="text-xs font-medium text-slate-500">Integration status</span>
+            {isPairVerified ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
+                Verified
+              </span>
+            ) : hasKeysEntered ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-600" />
+                Not verified
+              </span>
+            ) : customConfig.CUSTOM_GOOGLE_CLIENT_ID?.configured ||
+              customConfig.CUSTOM_VITE_GOOGLE_CLIENT_ID?.configured ||
+              customConfig.CUSTOM_GOOGLE_CLIENT_SECRET?.configured ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-800">
+                <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />
+                Active configuration
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                Not configured
+              </span>
+            )}
+          </div>
         </div>
+
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className="block text-sm font-medium text-slate-700">Google OAuth Client ID<input type="text" autoComplete="off" minLength={10} maxLength={255} value={draft.googleClientId} onChange={(e) => setDraft({ ...draft, googleClientId: e.target.value })} placeholder={customConfig.CUSTOM_GOOGLE_CLIENT_ID?.configured || customConfig.CUSTOM_VITE_GOOGLE_CLIENT_ID?.configured ? "Saved · enter a replacement" : "…apps.googleusercontent.com"} className={inputClass} /></label>
-          <label className="block text-sm font-medium text-slate-700">Google OAuth Client Secret<input type="password" autoComplete="new-password" minLength={10} maxLength={255} value={draft.googleClientSecret} onChange={(e) => setDraft({ ...draft, googleClientSecret: e.target.value })} placeholder={customConfig.CUSTOM_GOOGLE_CLIENT_SECRET?.configured ? "Saved securely · enter a replacement" : "Server-side client secret"} className={inputClass} /></label>
-          <label className="block text-sm font-medium text-slate-700 sm:col-span-2">Google token encryption key<input type="password" autoComplete="new-password" minLength={32} maxLength={255} value={draft.googleTokenKey} onChange={(e) => setDraft({ ...draft, googleTokenKey: e.target.value })} placeholder={customConfig.CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY?.configured ? "Saved securely · enter a replacement" : "At least 32 characters · keep this key stable"} className={inputClass} /></label>
+          <label className="block text-sm font-medium text-slate-700">
+            Google OAuth Client ID
+            <input
+              type="text"
+              autoComplete="off"
+              minLength={10}
+              maxLength={255}
+              value={draft.googleClientId}
+              onChange={(e) => {
+                const val = e.target.value;
+                setDraft({ ...draft, googleClientId: val });
+                if (googleVerified) setGoogleVerified(false);
+                if (googleTestState.status !== "untested") {
+                  setGoogleTestState({
+                    status: "untested",
+                    message: "Credentials have not yet been tested.",
+                  });
+                }
+              }}
+              placeholder={
+                customConfig.CUSTOM_GOOGLE_CLIENT_ID?.configured ||
+                customConfig.CUSTOM_VITE_GOOGLE_CLIENT_ID?.configured
+                  ? "Saved · enter a replacement"
+                  : "…apps.googleusercontent.com"
+              }
+              className={inputClass}
+            />
+          </label>
+          <label className="block text-sm font-medium text-slate-700">
+            Google OAuth Client Secret
+            <input
+              type="password"
+              autoComplete="new-password"
+              minLength={10}
+              maxLength={255}
+              value={draft.googleClientSecret}
+              onChange={(e) => {
+                const val = e.target.value;
+                setDraft({ ...draft, googleClientSecret: val });
+                if (googleVerified) setGoogleVerified(false);
+                if (googleTestState.status !== "untested") {
+                  setGoogleTestState({
+                    status: "untested",
+                    message: "Credentials have not yet been tested.",
+                  });
+                }
+              }}
+              placeholder={
+                customConfig.CUSTOM_GOOGLE_CLIENT_SECRET?.configured
+                  ? "Saved securely · enter a replacement"
+                  : "Server-side client secret"
+              }
+              className={inputClass}
+            />
+          </label>
+          <label className="block text-sm font-medium text-slate-700 sm:col-span-2">
+            Google token encryption key
+            <input
+              type="password"
+              autoComplete="new-password"
+              minLength={32}
+              maxLength={255}
+              value={draft.googleTokenKey}
+              onChange={(e) => {
+                const val = e.target.value;
+                setDraft({ ...draft, googleTokenKey: val });
+                if (googleVerified) setGoogleVerified(false);
+                if (googleTestState.status !== "untested") {
+                  setGoogleTestState({
+                    status: "untested",
+                    message: "Credentials have not yet been tested.",
+                  });
+                }
+              }}
+              placeholder={
+                customConfig.CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY?.configured
+                  ? "Saved securely · enter a replacement"
+                  : "At least 32 characters · keep this key stable"
+              }
+              className={inputClass}
+            />
+          </label>
         </div>
-        <p className="text-xs leading-5 text-slate-500">The client ID is public. The client secret and encryption key stay on the server and are never shown after saving. Keep the encryption key stable so saved Google connections remain usable. Configure the OAuth redirect URL as your server's /api/v1/integrations/google/callback address.</p>
-        <ConfigActions busy={savingKey === "google"} locked={actionLocked} configured={Boolean(customConfig.CUSTOM_GOOGLE_CLIENT_ID?.configured || customConfig.CUSTOM_VITE_GOOGLE_CLIENT_ID?.configured || customConfig.CUSTOM_GOOGLE_CLIENT_SECRET?.configured || customConfig.CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY?.configured)} onSave={() => saveCustom("google", { CUSTOM_GOOGLE_CLIENT_ID: draft.googleClientId, CUSTOM_VITE_GOOGLE_CLIENT_ID: draft.googleClientId, CUSTOM_GOOGLE_CLIENT_SECRET: draft.googleClientSecret, CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY: draft.googleTokenKey })} onReset={() => saveCustom("google", { CUSTOM_GOOGLE_CLIENT_ID: "", CUSTOM_VITE_GOOGLE_CLIENT_ID: "", CUSTOM_GOOGLE_CLIENT_SECRET: "", CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY: "" })} disabled={!draft.googleClientId.trim() || !draft.googleClientSecret.trim() || draft.googleTokenKey.trim().length < 32} />
+
+        {/* Credential verification */}
+        <div className="rounded-lg border border-slate-200 bg-slate-50/75 p-3.5 space-y-2.5">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-600">
+              Credential verification
+            </span>
+            {isPairVerified && (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700">
+                <ShieldCheck size={14} /> Provider verified
+              </span>
+            )}
+          </div>
+
+          <p
+            className={`text-xs ${
+              isPairVerified
+                ? "font-medium text-emerald-700"
+                : googleTestState.status === "failed"
+                  ? "font-medium text-red-600"
+                  : googleTestState.status === "testing"
+                    ? "font-medium text-blue-700"
+                    : "text-slate-500"
+            }`}
+          >
+            {isPairVerified
+              ? googleTestState.message || "Credentials successfully verified with Google."
+              : hasKeysEntered && googleTestState.status === "untested"
+                ? "Credentials have not yet been tested."
+                : googleTestState.message || "Credentials have not yet been tested."}
+          </p>
+
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <button
+              type="button"
+              disabled={!hasKeysEntered || googleTesting || actionLocked}
+              onClick={handleTestGoogle}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {googleTesting && <RefreshCw size={13} className="animate-spin text-blue-600" />}
+              {googleTesting ? "Testing Credentials…" : "Test Credentials"}
+            </button>
+            <span className="text-[11px] text-slate-500">
+              Verifies the OAuth Client ID, Secret, and Encryption Key with Google OAuth2.
+            </span>
+          </div>
+        </div>
+
+        <p className="text-xs leading-5 text-slate-500">
+          The client secret and encryption key stay securely on the backend. Only tested and verified configurations can be saved. Configure the OAuth redirect URL in Google Cloud Console as your server's /api/v1/integrations/google/callback address.
+        </p>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={actionLocked || !isPairVerified || savingKey === "google"}
+            onClick={() =>
+              saveCustom("google", {
+                CUSTOM_GOOGLE_CLIENT_ID: draft.googleClientId,
+                CUSTOM_VITE_GOOGLE_CLIENT_ID: draft.googleClientId,
+                CUSTOM_GOOGLE_CLIENT_SECRET: draft.googleClientSecret,
+                CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY: draft.googleTokenKey,
+              })
+            }
+            className="rounded-lg bg-blue-700 px-3.5 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {savingKey === "google" ? "Saving…" : "Save Configuration"}
+          </button>
+          <button
+            type="button"
+            disabled={
+              actionLocked ||
+              (!customConfig.CUSTOM_GOOGLE_CLIENT_ID?.configured &&
+                !customConfig.CUSTOM_VITE_GOOGLE_CLIENT_ID?.configured &&
+                !customConfig.CUSTOM_GOOGLE_CLIENT_SECRET?.configured &&
+                !customConfig.CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY?.configured)
+            }
+            onClick={() =>
+              saveCustom("google", {
+                CUSTOM_GOOGLE_CLIENT_ID: "",
+                CUSTOM_VITE_GOOGLE_CLIENT_ID: "",
+                CUSTOM_GOOGLE_CLIENT_SECRET: "",
+                CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY: "",
+              })
+            }
+            className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Use existing default
+          </button>
+        </div>
       </div>
     );
   }

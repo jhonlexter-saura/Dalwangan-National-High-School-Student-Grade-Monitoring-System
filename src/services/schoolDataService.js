@@ -480,6 +480,13 @@ export function testMailerCredentials({ emailUser, emailPassword }) {
   });
 }
 
+export function testGoogleCredentials({ googleClientId, googleClientSecret, googleTokenKey }) {
+  return request("/integrations/test-google", {
+    method: "POST",
+    body: JSON.stringify({ googleClientId, googleClientSecret, googleTokenKey }),
+  });
+}
+
 // -----------------------------
 // Grades
 // -----------------------------

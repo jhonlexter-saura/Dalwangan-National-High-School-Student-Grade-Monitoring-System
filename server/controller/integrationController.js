@@ -735,6 +735,148 @@ async function testMailerCredentials(req, res) {
   }
 }
 
+// POST /test-google (requires verified integration-access session)
+async function testGoogleCredentials(req, res) {
+  try {
+    const { googleClientId, googleClientSecret, googleTokenKey } = req.body || {};
+
+    // Layer 1 — Input validation
+    if (!googleClientId || typeof googleClientId !== "string" || !googleClientId.trim()) {
+      return res.status(400).json({ error: "Google OAuth Client ID is required." });
+    }
+    if (!googleClientSecret || typeof googleClientSecret !== "string" || !googleClientSecret.trim()) {
+      return res.status(400).json({ error: "Google OAuth Client Secret is required." });
+    }
+    if (!googleTokenKey || typeof googleTokenKey !== "string" || !googleTokenKey.trim()) {
+      return res.status(400).json({ error: "Google token encryption key is required." });
+    }
+
+    const trimmedClientId = googleClientId.trim().replace(/^["']|["']$/g, "");
+    const trimmedClientSecret = googleClientSecret.trim().replace(/^["']|["']$/g, "");
+    const trimmedTokenKey = googleTokenKey.trim().replace(/^["']|["']$/g, "");
+
+    if (!/^[0-9]+-[a-z0-9_]+\.apps\.googleusercontent\.com$/i.test(trimmedClientId)) {
+      return res.status(400).json({
+        error: "Invalid Google OAuth Client ID format. Must end in .apps.googleusercontent.com.",
+      });
+    }
+
+    if (trimmedClientSecret.length < 16) {
+      return res.status(400).json({
+        error: "Invalid Google OAuth Client Secret format. Expected at least 16 characters.",
+      });
+    }
+
+    if (Buffer.byteLength(trimmedTokenKey) < 32) {
+      return res.status(400).json({
+        error: "Google token encryption key must be at least 32 bytes long (32+ characters).",
+      });
+    }
+
+    // Verify token encryption key works with AES-256-GCM
+    try {
+      const keyBuf = crypto.createHash("sha256").update(trimmedTokenKey).digest();
+      const iv = crypto.randomBytes(12);
+      const cipher = crypto.createCipheriv("aes-256-gcm", keyBuf, iv);
+      let enc = cipher.update("dnhs_test_payload", "utf8", "hex");
+      enc += cipher.final("hex");
+      const tag = cipher.getAuthTag();
+      const decipher = crypto.createDecipheriv("aes-256-gcm", keyBuf, iv);
+      decipher.setAuthTag(tag);
+      let dec = decipher.update(enc, "hex", "utf8");
+      dec += decipher.final("utf8");
+      if (dec !== "dnhs_test_payload") {
+        throw new Error("Encryption verification failed");
+      }
+    } catch {
+      return res.status(400).json({
+        error: "Invalid token encryption key: unable to initialize AES-256-GCM cipher.",
+      });
+    }
+
+    // Layer 2 & 3 — Provider verification against Google OAuth
+    const redirectUri =
+      process.env.GOOGLE_REDIRECT_URI?.trim() ||
+      "http://localhost:5000/api/v1/integrations/google/callback";
+    const params = new URLSearchParams({
+      client_id: trimmedClientId,
+      client_secret: trimmedClientSecret,
+      grant_type: "authorization_code",
+      code: "dnhs_probe_token_validation",
+      redirect_uri: redirectUri,
+    });
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+    const googleRes = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!googleRes.ok) {
+      const result = await googleRes.json().catch(() => ({}));
+      // If HTTP 401 or invalid_client, Google rejected the client credentials
+      if (googleRes.status === 401 || result.error === "invalid_client") {
+        let desc = result.error_description || "Unauthorized";
+        if (desc.includes("The OAuth client was not found")) {
+          return res.status(400).json({
+            success: false,
+            verified: false,
+            error:
+              "Google could not find this OAuth client. Check that the Client ID is correct and active in Google Cloud Console.",
+          });
+        }
+        return res.status(400).json({
+          success: false,
+          verified: false,
+          error:
+            "Google rejected the OAuth client credentials (invalid_client: Unauthorized). Verify your Client ID and Client Secret in Google Cloud Console.",
+        });
+      }
+
+      // If HTTP 400 with invalid_grant, Google authenticated the client successfully and rejected only the dummy probe authorization code
+      if (googleRes.status === 400 && result.error === "invalid_grant") {
+        // Authenticated successfully!
+      } else {
+        return res.status(400).json({
+          success: false,
+          verified: false,
+          error: `Google verification returned ${result.error || "an error"}: ${result.error_description || "Unable to verify credentials."}`,
+        });
+      }
+    }
+
+    // Audit log (masked preview of client ID only)
+    const clientPrefix = trimmedClientId.split("-")[0] || trimmedClientId.slice(0, 8);
+    await logAudit({
+      req,
+      action: "GOOGLE_CREDENTIALS_TESTED",
+      category: "system",
+      target: { entityType: "IntegrationConfig", name: "Google OAuth verification" },
+      description: "Tested and verified Google OAuth credentials with Google OAuth2.",
+      details: {
+        clientIdPreview: `${clientPrefix.slice(0, 8)}...apps.googleusercontent.com`,
+      },
+    });
+
+    return res.json({
+      success: true,
+      verified: true,
+      message: "Google OAuth credentials verified successfully with Google.",
+    });
+  } catch (error) {
+    console.error("Test Google credentials error:", error);
+    if (error.name === "AbortError") {
+      return res.status(504).json({ error: "Google verification request timed out. Please try again." });
+    }
+    return res.status(500).json({ error: "Unable to verify credentials with Google." });
+  }
+}
+
 module.exports = {
   getPublicSettings,
   requestAccess,
@@ -747,4 +889,5 @@ module.exports = {
   updateSetting,
   testRecaptchaCredentials,
   testMailerCredentials,
+  testGoogleCredentials,
 };

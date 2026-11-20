@@ -71,49 +71,88 @@ async function validateCustomValues(updates) {
     throw validationError("The custom token secret must be at least 32 bytes long.");
   }
 
-  const googleClientId = updates.CUSTOM_GOOGLE_CLIENT_ID || updates.CUSTOM_VITE_GOOGLE_CLIENT_ID;
-  if (googleClientId) {
-    if (!/^[0-9]+-[a-z0-9_]+\.apps\.googleusercontent\.com$/i.test(googleClientId)) {
-      throw validationError(
-        "Enter a valid Google OAuth Client ID ending in .apps.googleusercontent.com."
-      );
-    }
-    try {
-      const probeUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(googleClientId)}&response_type=token&redirect_uri=http%3A%2F%2Flocalhost&scope=email`;
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
-      const probeRes = await fetch(probeUrl, {
-        method: "GET",
-        signal: controller.signal,
-        headers: { "User-Agent": "Mozilla/5.0 (DNHS-SGMS Credential Verifier)" },
-      });
-      clearTimeout(timeoutId);
-      const probeText = await probeRes.text();
-      if (
-        probeRes.status === 400 ||
-        probeText.includes("invalid_client") ||
-        probeText.includes("The OAuth client was not found") ||
-        probeText.includes("deleted_client")
-      ) {
+  if (
+    Object.hasOwn(updates, "CUSTOM_GOOGLE_CLIENT_ID") ||
+    Object.hasOwn(updates, "CUSTOM_VITE_GOOGLE_CLIENT_ID") ||
+    Object.hasOwn(updates, "CUSTOM_GOOGLE_CLIENT_SECRET") ||
+    Object.hasOwn(updates, "CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY")
+  ) {
+    const googleClientId = (
+      updates.CUSTOM_GOOGLE_CLIENT_ID ||
+      updates.CUSTOM_VITE_GOOGLE_CLIENT_ID ||
+      ""
+    )
+      .trim()
+      .replace(/^["']|["']$/g, "");
+    const googleClientSecret = (updates.CUSTOM_GOOGLE_CLIENT_SECRET || "")
+      .trim()
+      .replace(/^["']|["']$/g, "");
+    const googleTokenKey = (updates.CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY || "")
+      .trim()
+      .replace(/^["']|["']$/g, "");
+
+    // If all are empty, the admin is resetting/removing custom Google OAuth overrides
+    if (!googleClientId && !googleClientSecret && !googleTokenKey) {
+      // Allowed reset
+    } else {
+      if (!googleClientId || !googleClientSecret || !googleTokenKey) {
         throw validationError(
-          "Google returned an invalid reply: OAuth Client ID was not recognized by Google. Verify that the client ID is correct and active in Google Cloud Console."
+          "Google OAuth Client ID, Client Secret, and Token Encryption Key are all required to configure Google OAuth."
         );
       }
-    } catch (probeError) {
-      if (probeError.statusCode === 400) throw probeError;
-      console.warn("Google Client ID verification network probe note:", probeError.message);
+
+      if (!/^[0-9]+-[a-z0-9_]+\.apps\.googleusercontent\.com$/i.test(googleClientId)) {
+        throw validationError(
+          "Enter a valid Google OAuth Client ID ending in .apps.googleusercontent.com."
+        );
+      }
+
+      if (googleClientSecret.length < 16) {
+        throw validationError(
+          "Invalid Google OAuth Client Secret. Client secret must be at least 16 characters."
+        );
+      }
+
+      if (Buffer.byteLength(googleTokenKey) < 32) {
+        throw validationError("The Google token encryption key must be at least 32 bytes long.");
+      }
+
+      // Layer 3: Provider verification against Google Token Endpoint
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        const params = new URLSearchParams({
+          client_id: googleClientId,
+          client_secret: googleClientSecret,
+          grant_type: "authorization_code",
+          code: "dnhs_probe_authorization_code",
+          redirect_uri:
+            process.env.GOOGLE_REDIRECT_URI?.trim() ||
+            "http://localhost:5000/api/v1/integrations/google/callback",
+        });
+
+        const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: params,
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        const tokenResult = await tokenRes.json().catch(() => ({}));
+        if (tokenRes.status === 401 || tokenResult.error === "invalid_client") {
+          throw validationError(
+            "Google rejected the OAuth client credentials (invalid_client). Verify your Google Client ID and Client Secret in the Google Cloud Console."
+          );
+        }
+      } catch (probeError) {
+        if (probeError.statusCode === 400) throw probeError;
+        console.warn(
+          "Google OAuth credentials verification network probe note:",
+          probeError.message
+        );
+      }
     }
-  }
-
-  if (updates.CUSTOM_GOOGLE_CLIENT_SECRET && updates.CUSTOM_GOOGLE_CLIENT_SECRET.trim().length < 8) {
-    throw validationError("The Google OAuth Client Secret looks too short.");
-  }
-
-  if (
-    updates.CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY &&
-    Buffer.byteLength(updates.CUSTOM_GOOGLE_TOKEN_ENCRYPTION_KEY.trim()) < 32
-  ) {
-    throw validationError("The Google token encryption key must be at least 32 bytes long.");
   }
 
   if (
