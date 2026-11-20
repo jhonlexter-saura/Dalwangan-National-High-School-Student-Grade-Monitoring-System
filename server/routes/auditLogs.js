@@ -7,9 +7,6 @@ const controller = require("../controller/auditLogController");
 
 const router = express.Router();
 
-console.log(controller);
-console.log(require.resolve("../controller/auditLogController"));
-
 router.get("/", requireAdmin, buildAuditLogFilter, parsePagination({ defaultLimit: 20, maxLimit: 100 }), controller.getAuditLogs);
 
 // Must stay above "/:id", otherwise "export" would be treated as an id
